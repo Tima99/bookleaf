@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { ZodError } from 'zod';
 import {
   formatTicketReference,
   PRIORITY_RANK,
@@ -24,7 +25,7 @@ import {
   evaluateFloorRules,
   maxPriority,
 } from '../rules/priority-rules';
-import { TriageOutputSchema } from '../schemas/output.schemas';
+import { toTriageOutput, TriageModelOutputSchema } from '../schemas/output.schemas';
 import { toStrategyRefs, type AiRunService } from './ai-run.service';
 import type { StrategyService } from './strategy.service';
 
@@ -109,15 +110,16 @@ export class TriageService {
     try {
       const response = await this.deps.llm.generateStructured({
         task: 'triage',
-        schema: TriageOutputSchema,
+        schema: TriageModelOutputSchema,
         schemaName: 'ticket_triage',
+        provider: classification.config.provider,
         system: prompt.system,
         prompt: prompt.prompt,
         model: classification.config.model,
         temperature: classification.config.temperature,
         maxOutputTokens: classification.config.maxOutputTokens,
       });
-      const out = response.object;
+      const out = toTriageOutput(response.object);
       const rules = applyRules(out.category, out.priority);
       const raised = rules.priority !== out.priority;
       return {
@@ -141,7 +143,11 @@ export class TriageService {
       };
     } catch (err) {
       const error =
-        err instanceof AiError ? err : new AiError('PROVIDER_ERROR', 'Unexpected triage failure');
+        err instanceof AiError
+          ? err
+          : err instanceof ZodError
+            ? new AiError('INVALID_OUTPUT', 'The model returned an unusable triage result')
+            : new AiError('PROVIDER_ERROR', 'Unexpected triage failure');
       const keyword = classifyByKeywords(input.subject, input.description);
       const rules = applyRules(keyword.category, null);
       return {

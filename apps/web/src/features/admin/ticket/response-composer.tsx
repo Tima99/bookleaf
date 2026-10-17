@@ -21,20 +21,21 @@ import { Section } from '@/components/ui/primitives';
 import { errorMessage } from '@/lib/api-client';
 import { endpoints } from '@/lib/endpoints';
 
+/** Plain-language reason the AI couldn't write a draft. */
 const FAILURE_COPY: Record<string, string> = {
-  NOT_CONFIGURED: 'AI drafting is not configured on this server.',
-  RATE_LIMITED: 'The AI provider is rate-limiting requests right now.',
-  TIMEOUT: 'The AI provider did not respond in time.',
-  PROVIDER_ERROR: 'The AI provider returned an error.',
-  INVALID_OUTPUT: 'The model returned an unusable draft.',
-  CIRCUIT_OPEN: 'AI calls are briefly paused after recent errors.',
+  NOT_CONFIGURED: 'AI writing help is switched off.',
+  RATE_LIMITED: 'AI is busy right now.',
+  TIMEOUT: 'AI took too long to respond.',
+  PROVIDER_ERROR: 'AI ran into a problem.',
+  INVALID_OUTPUT: "AI couldn't write a usable reply.",
+  CIRCUIT_OPEN: 'AI is paused for a moment after some errors.',
 };
 
 /**
  * Reply composer with the AI draft.
  *
  * - The draft is requested once when the workspace opens (cached server-side; tab
- *   switches never trigger new model calls). "Regenerate" forces a fresh call.
+ *   switches never trigger new model calls). "Write a new draft" forces a fresh call.
  * - The draft pre-fills the editor only while the editor is untouched.
  * - Sending asks for confirmation and flags unchecked verification items.
  */
@@ -174,7 +175,7 @@ export function ResponseComposer({
               disabled={aiUnavailable}
               onClick={() => draftMutation.mutate(true)}
             >
-              {draft?.source === 'AI' ? 'Regenerate' : 'Try AI draft'}
+              {draft?.source === 'AI' ? 'Write a new draft' : 'Ask AI to draft'}
             </Button>
           </Tooltip>
         </div>
@@ -183,7 +184,7 @@ export function ResponseComposer({
       {draftMutation.isPending && !draft ? (
         <div className="mb-4 rounded-lg border border-brand-100 bg-brand-50/50 p-4">
           <p className="mb-2 flex items-center gap-2 text-sm text-brand-700">
-            <RobotOutlined /> Drafting a reply from the knowledge base…
+            <RobotOutlined /> AI is writing a draft reply…
           </p>
           <Skeleton active paragraph={{ rows: 3 }} title={false} />
         </div>
@@ -194,7 +195,7 @@ export function ResponseComposer({
           className="!mb-3"
           type="warning"
           showIcon
-          title={`${FAILURE_COPY[result.failure.kind] ?? 'AI drafting failed.'} ${draft?.source === 'TEMPLATE' ? 'A policy template was loaded instead — fill in the [bracketed] parts.' : 'Write your reply manually.'}`}
+          title={`${FAILURE_COPY[result.failure.kind] ?? "AI couldn't write a draft."} ${draft?.source === 'TEMPLATE' ? "We've loaded a ready-made reply instead — fill in the parts in [brackets]." : 'Please write your reply yourself.'}`}
         />
       ) : null}
       {draftMutation.isError ? (
@@ -209,33 +210,24 @@ export function ResponseComposer({
                 <RobotOutlined /> AI draft
               </>
             ) : (
-              'Template'
+              'Ready-made reply'
             )}
           </Tag>
-          {draft.model ? <span>{draft.model}</span> : null}
-          {draft.strategy ? (
-            <span>
-              · {draft.strategy.name} v{draft.strategy.version}
-            </span>
-          ) : null}
-          <span>· {formatDateTime(draft.generatedAt)}</span>
+          <span>{formatDateTime(draft.generatedAt)}</span>
           {draft.stale ? (
             <Tag color="orange" className="!m-0">
-              New messages since this draft
+              The author wrote again after this draft
             </Tag>
           ) : null}
           {draft.escalationRecommended ? (
             <Tag color="red" className="!m-0">
-              Escalation recommended
+              Needs a specialist team
             </Tag>
           ) : null}
           {draft.suggestedStatus === 'RESOLVED' ? (
             <Tag color="green" className="!m-0">
-              Suggests: resolve
+              Answers the question fully
             </Tag>
-          ) : null}
-          {draft.knowledgeSectionsUsed.length ? (
-            <span>· KB: {draft.knowledgeSectionsUsed.join(', ')}</span>
           ) : null}
         </div>
       ) : null}

@@ -14,7 +14,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useRef, useState, type ReactNode } from 'react';
 import type { ClientTicketEvent } from '@bookleaf/contracts';
-import { LiveIndicator } from '@/components/ui/live-indicator';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useTicketEvents } from '@/hooks/use-ticket-events';
 import { queryKeys } from '@/lib/endpoints';
@@ -109,9 +108,6 @@ export function AuthorShell({ children }: { children: ReactNode }) {
             </Link>
             <nav className="ml-6 hidden items-center gap-1 md:flex">{navLinks()}</nav>
             <div className="ml-auto flex items-center gap-3">
-              <span className="hidden sm:inline">
-                <LiveIndicator status={live} />
-              </span>
               <Link href="/author/tickets/new">
                 <Button type="primary" icon={<PlusOutlined />}>
                   <span className="hidden sm:inline">Raise a query</span>
@@ -158,9 +154,6 @@ export function AuthorShell({ children }: { children: ReactNode }) {
           title={<BrandMark />}
         >
           <nav className="flex flex-col gap-1">{navLinks(() => setMobileOpen(false))}</nav>
-          <div className="mt-6">
-            <LiveIndicator status={live} />
-          </div>
         </Drawer>
 
         <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">{children}</main>

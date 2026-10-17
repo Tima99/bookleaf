@@ -35,7 +35,7 @@ const NAV: Array<{
   { key: 'dashboard', label: 'Dashboard', icon: <DashboardOutlined />, tab: tabFor.dashboard },
   { key: 'queue', label: 'Ticket queue', icon: <InboxOutlined />, tab: tabFor.queue },
   { key: 'authors', label: 'Authors', icon: <TeamOutlined />, tab: tabFor.authors },
-  { key: 'ai', label: 'AI strategies', icon: <ExperimentOutlined />, tab: tabFor.ai },
+  { key: 'ai', label: 'AI settings', icon: <ExperimentOutlined />, tab: tabFor.ai },
   { key: 'knowledge', label: 'Knowledge base', icon: <BookOutlined />, tab: tabFor.knowledge },
 ];
 

@@ -4,7 +4,7 @@ Source of truth: `apps/api/src/modules/ai/strategies/defaults.ts` (defaults),
 `apps/api/src/modules/ai/prompts/*.ts` (composition) and
 `apps/api/src/modules/ai/schemas/output.schemas.ts` (structured outputs).
 Admins can view the exact composed prompt for any sample ticket in
-**AI strategies → (strategy) → Preview & test**.
+**AI settings → (setting) → Try it → Technical details**.
 
 ## Structure
 

@@ -198,16 +198,16 @@ export function AdminDashboardView() {
           >
             {d.ai.configured ? (
               <p className="text-sm text-ink-muted">
-                Active. {d.ai.runsLast24h} model calls in the last 24h
+                AI is on. It sorts new tickets and drafts replies for you to review
                 {d.ai.failuresLast24h
-                  ? `, ${d.ai.failuresLast24h} failed (handled with fallbacks)`
+                  ? ` (it couldn't help ${d.ai.failuresLast24h} time${d.ai.failuresLast24h === 1 ? '' : 's'} in the last day — those were sorted automatically instead)`
                   : ''}
                 .
               </p>
             ) : (
               <p className="text-sm text-ink-muted">
-                Manual mode — no AI provider key configured. Tickets are triaged with keyword rules
-                and replies start from policy templates.
+                AI is switched off. New tickets are sorted automatically from key words, and replies
+                start from ready-made templates.
               </p>
             )}
           </Section>

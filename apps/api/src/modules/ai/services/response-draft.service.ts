@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { type Types } from 'mongoose';
+import { ZodError } from 'zod';
 import {
   formatTicketReference,
   type AiDraftDto,
@@ -23,7 +24,7 @@ import { selectKnowledgeSections } from '../../knowledge-base/retrieval';
 import { buildDraftPrompt, type DraftPromptInput } from '../prompts/draft.prompt';
 import type { ComposedPrompt, PromptBook, ResolvedStrategy } from '../prompts/types';
 import type { LlmClient } from '../providers/llm-client';
-import { DraftOutputSchema, type DraftOutput } from '../schemas/output.schemas';
+import { DraftModelOutputSchema, toDraftOutput, type DraftOutput } from '../schemas/output.schemas';
 import { toStrategyRefs, type AiRunService } from './ai-run.service';
 import { buildTemplateDraft } from './fallback-templates';
 import type { StrategyService } from './strategy.service';
@@ -346,8 +347,9 @@ export class ResponseDraftService {
     try {
       const response = await this.deps.llm.generateStructured({
         task: 'draft',
-        schema: DraftOutputSchema,
+        schema: DraftModelOutputSchema,
         schemaName: 'support_reply_draft',
+        provider: strategy.config.provider,
         system: prompt.system,
         prompt: prompt.prompt,
         model: strategy.config.model,
@@ -356,7 +358,7 @@ export class ResponseDraftService {
       });
       return {
         ok: true,
-        output: response.object,
+        output: toDraftOutput(response.object),
         model: response.model,
         latencyMs: response.latencyMs,
         usage: response.usage,
@@ -367,7 +369,9 @@ export class ResponseDraftService {
         error:
           err instanceof AiError
             ? err
-            : new AiError('PROVIDER_ERROR', 'Unexpected drafting failure'),
+            : err instanceof ZodError
+              ? new AiError('INVALID_OUTPUT', 'The model returned an unusable draft')
+              : new AiError('PROVIDER_ERROR', 'Unexpected drafting failure'),
       };
     }
   }

@@ -11,7 +11,7 @@
 │   routes / actions)     │                           │  └────┬─────┘  └───────────┘ │
 └─────────────────────────┘                           │       │ LlmClient (AI SDK 7) │
             ▲                                         │       ▼                      │
-            │  shared types + Zod schemas             │  Anthropic / OpenAI (server- │
+            │  shared types + Zod schemas             │  OpenAI / Anthropic (server- │
 ┌───────────┴─────────────┐                           │  side key, optional)         │
 │ packages/contracts      │◀──────────────────────────┴──────────────────────────────┘
 │ packages/utils          │

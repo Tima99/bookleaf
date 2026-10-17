@@ -16,6 +16,8 @@ export interface DefaultStrategy {
   kind: AiStrategyKind;
   category: TicketCategory | null;
   purpose: string;
+  /** Earlier built-in names/descriptions; renamed on startup if nobody has edited them. */
+  legacy?: { name: string; purpose: string };
   config: AiStrategyConfigInput;
 }
 
@@ -281,15 +283,19 @@ export function buildDefaultStrategies(): DefaultStrategy[] {
   return [
     {
       key: 'classification.default',
-      name: 'Ticket triage (classification)',
+      name: 'Sorting tickets into categories',
       kind: 'CLASSIFICATION',
       category: null,
-      purpose:
-        'Classifies every new ticket into one of six categories; combined with priority scoring in one model call.',
+      purpose: 'Decides which category each new ticket belongs to.',
+      legacy: {
+        name: 'Ticket triage (classification)',
+        purpose:
+          'Classifies every new ticket into one of six categories; combined with priority scoring in one model call.',
+      },
       config: {
         instructions: DEFAULT_CLASSIFICATION_INSTRUCTIONS,
         floorRules: GLOBAL_FLOOR_RULES,
-        provider: 'anthropic',
+        provider: 'openai',
         model: '',
         temperature: null,
         maxOutputTokens: 400,
@@ -299,10 +305,14 @@ export function buildDefaultStrategies(): DefaultStrategy[] {
     },
     ...categories.map<DefaultStrategy>((category) => ({
       key: `priority.${category.toLowerCase()}`,
-      name: `${LABEL[category]} — priority`,
+      name: `${LABEL[category]} — urgency`,
       kind: 'PRIORITY',
       category,
-      purpose: `Priority rubric and deterministic minimum-priority rules for ${LABEL[category]} tickets.`,
+      purpose: `Decides how urgent ${LABEL[category]} tickets are.`,
+      legacy: {
+        name: `${LABEL[category]} — priority`,
+        purpose: `Priority rubric and deterministic minimum-priority rules for ${LABEL[category]} tickets.`,
+      },
       config: {
         instructions: `Priority rubric for ${LABEL[category]} tickets.`,
         priorityRules: PRIORITY_DEFAULTS[category].rules,
@@ -312,16 +322,20 @@ export function buildDefaultStrategies(): DefaultStrategy[] {
     })),
     ...categories.map<DefaultStrategy>((category) => ({
       key: `response.${category.toLowerCase()}`,
-      name: `${LABEL[category]} — reply drafting`,
+      name: `${LABEL[category]} — replies`,
       kind: 'RESPONSE',
       category,
-      purpose: `Drafts empathetic, policy-accurate replies for ${LABEL[category]} tickets.`,
+      purpose: `Writes draft replies for ${LABEL[category]} tickets.`,
+      legacy: {
+        name: `${LABEL[category]} — reply drafting`,
+        purpose: `Drafts empathetic, policy-accurate replies for ${LABEL[category]} tickets.`,
+      },
       config: {
         instructions: DEFAULT_RESPONSE_INSTRUCTIONS,
         categoryInstructions: RESPONSE_DEFAULTS[category].categoryInstructions,
         tone: DEFAULT_TONE,
         knowledgeSections: RESPONSE_DEFAULTS[category].knowledgeSections,
-        provider: 'anthropic',
+        provider: 'openai',
         model: '',
         temperature: null,
         maxOutputTokens: 1200,

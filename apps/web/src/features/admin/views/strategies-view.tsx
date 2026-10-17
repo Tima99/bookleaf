@@ -1,6 +1,6 @@
 'use client';
 
-import { CopyOutlined, PlusOutlined } from '@ant-design/icons';
+import { CopyOutlined, PlusOutlined, RobotOutlined } from '@ant-design/icons';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -16,9 +16,9 @@ import {
   Tag,
   Tooltip,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import {
-  AI_STRATEGY_KIND_LABELS,
   TICKET_CATEGORIES,
   TICKET_CATEGORY_LABELS,
   type AiRunDto,
@@ -27,14 +27,17 @@ import {
   type TicketCategory,
 } from '@bookleaf/contracts';
 import { formatDateTime, formatNumber } from '@bookleaf/utils';
-import type { ColumnsType } from 'antd/es/table';
 import { useColumnVisibility } from '@/components/ui/column-visibility';
 import { ErrorState, LoadingBlock, PageHeader } from '@/components/ui/primitives';
 import { errorMessage } from '@/lib/api-client';
 import { endpoints, queryKeys } from '@/lib/endpoints';
 import { tabFor } from '@/stores/workspace-store';
+import { ACTIVITY_KIND, AI_PROBLEM, SETTING_KIND } from '../ai/plain-language';
 import { useWorkspaceNav } from '../workspace/use-workspace-nav';
 
+const KINDS: AiStrategyKind[] = ['CLASSIFICATION', 'PRIORITY', 'RESPONSE'];
+
+/** One plain sentence about whether AI is on — no providers, models or tokens. */
 function AiStatusBanner() {
   const status = useQuery({
     queryKey: queryKeys.ai.status,
@@ -43,168 +46,153 @@ function AiStatusBanner() {
   });
   if (!status.data) return null;
   const s = status.data;
-  if (!s.configured) {
-    return (
-      <Alert
-        className="!mb-6"
-        type="warning"
-        showIcon
-        title="Manual mode — no AI provider configured"
-        description="Set AI_PROVIDER and ANTHROPIC_API_KEY (or OPENAI_API_KEY) in the API environment. Until then tickets are triaged with keyword rules and replies start from policy templates. Strategy previews still work."
-      />
-    );
-  }
+  const helped = s.last24h.runs - s.last24h.failures;
+  const state = !s.configured ? 'off' : s.circuitOpenUntil ? 'paused' : 'on';
+  const dot = { on: 'bg-success', paused: 'bg-warning', off: 'bg-ink-subtle' }[state];
+  const title = {
+    on: 'AI is on',
+    paused: 'AI is taking a short break after some errors',
+    off: 'AI is switched off',
+  }[state];
+  const text =
+    state === 'off'
+      ? 'New tickets are sorted automatically from key words, and replies start from ready-made templates. Your settings here are kept and will be used as soon as AI is switched on.'
+      : `In the last 24 hours AI helped ${formatNumber(helped)} time${helped === 1 ? '' : 's'}${
+          s.last24h.failures
+            ? `; ${s.last24h.failures} time${s.last24h.failures === 1 ? '' : 's'} it couldn't help and the ticket was handled automatically instead`
+            : ''
+        }.`;
   return (
-    <div className="surface-card mb-6 flex flex-wrap items-center gap-x-8 gap-y-2 px-5 py-3 text-sm">
-      <span>
-        <span className="text-ink-muted">Provider</span>{' '}
-        <strong className="ml-1">{s.provider}</strong>
+    <div className="surface-card mb-6 flex items-start gap-3 px-4 py-3" role="status">
+      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+        <RobotOutlined />
       </span>
-      <span>
-        <span className="text-ink-muted">Triage model</span>{' '}
-        <strong className="ml-1">{s.defaultModels?.triage}</strong>
-      </span>
-      <span>
-        <span className="text-ink-muted">Draft model</span>{' '}
-        <strong className="ml-1">{s.defaultModels?.draft}</strong>
-      </span>
-      <span>
-        <span className="text-ink-muted">Last 24h</span>{' '}
-        <strong className="ml-1">
-          {s.last24h.runs} calls · {s.last24h.failures} failed ·{' '}
-          {formatNumber(s.last24h.inputTokens + s.last24h.outputTokens)} tokens
-        </strong>
-      </span>
-      {s.circuitOpenUntil ? (
-        <Tag color="orange">Paused until {formatDateTime(s.circuitOpenUntil)}</Tag>
-      ) : null}
+      <div className="min-w-0">
+        <p className="flex items-center gap-2 font-medium text-ink">
+          <span className={`inline-block h-2 w-2 rounded-full ${dot}`} aria-hidden />
+          {title}
+        </p>
+        <p className="text-sm text-ink-muted">{text}</p>
+      </div>
     </div>
   );
 }
 
-function RunLog() {
+/** "AI activity": what AI did recently, in plain words. Technical columns are opt-in. */
+function AiActivity() {
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'FAILED'>('ALL');
-  const query = {
-    page,
-    pageSize: 20,
-    status: statusFilter === 'FAILED' ? ('FAILED' as const) : undefined,
-  };
+  const [onlyProblems, setOnlyProblems] = useState(false);
+  const query = { page, pageSize: 20, status: onlyProblems ? ('FAILED' as const) : undefined };
   const runs = useQuery({
     queryKey: queryKeys.ai.runs(query),
     queryFn: () => endpoints.ai.runs(query),
     placeholderData: keepPreviousData,
   });
+
   const columns: ColumnsType<AiRunDto> = [
     {
       title: 'When',
       key: 'createdAt',
       dataIndex: 'createdAt',
-      render: (v: string) => formatDateTime(v),
       width: 170,
+      render: (v: string) => formatDateTime(v),
     },
     {
-      title: 'Kind',
+      title: 'What AI did',
       key: 'kind',
       dataIndex: 'kind',
-      width: 120,
-      render: (v: string) => <Tag>{v}</Tag>,
-    },
-    {
-      title: 'Result',
-      key: 'status',
-      width: 200,
-      render: (_, r) =>
-        r.status === 'SUCCESS' ? (
-          <Tag color="green">Success</Tag>
-        ) : (
-          <Tooltip title={r.failureMessage}>
-            <Tag color="red">{r.failureKind ?? 'Failed'}</Tag>
-          </Tooltip>
-        ),
+      render: (v: AiRunDto['kind']) => ACTIVITY_KIND[v],
     },
     {
       title: 'Ticket',
       key: 'ticket',
-      width: 100,
+      width: 110,
       render: (_, r) => r.ticket?.reference ?? '—',
     },
     {
-      title: 'Strategy',
+      title: 'Result',
+      key: 'status',
+      render: (_, r) =>
+        r.status === 'SUCCESS' ? (
+          <Tag color="green">Done</Tag>
+        ) : (
+          <Tag color="orange">{r.failureKind ? AI_PROBLEM[r.failureKind] : "Didn't work"}</Tag>
+        ),
+    },
+    // Technical detail for whoever maintains the AI — hidden unless switched on.
+    {
+      title: 'Setting used',
       key: 'strategy',
-      render: (_, r) => r.strategies.map((s) => `${s.name} v${s.version}`).join(', '),
+      render: (_, r) => r.strategies.map((s) => `${s.name} (v${s.version})`).join(', '),
     },
+    { title: 'Model', key: 'model', dataIndex: 'model', render: (v: string | null) => v ?? '—' },
     {
-      title: 'Model',
-      key: 'model',
-      dataIndex: 'model',
-      width: 160,
-      render: (v: string | null) => v ?? '—',
-    },
-    {
-      title: 'Latency',
+      title: 'Time taken',
       key: 'latencyMs',
       dataIndex: 'latencyMs',
-      width: 90,
       align: 'right',
-      render: (v: number) => (v ? `${v} ms` : '—'),
+      render: (v: number) => (v ? `${(v / 1000).toFixed(1)} s` : '—'),
     },
     {
-      title: 'Tokens in/out',
+      title: 'Tokens in / out',
       key: 'tokens',
-      width: 120,
       align: 'right',
       render: (_, r) =>
         r.inputTokens !== null ? `${r.inputTokens} / ${r.outputTokens ?? 0}` : '—',
     },
   ];
-  const { visibleColumns, columnSettings } = useColumnVisibility('ai-run-log', columns, {
+  const { visibleColumns, columnSettings } = useColumnVisibility('ai-activity', columns, {
     locked: ['createdAt'],
+    defaultHidden: ['strategy', 'model', 'latencyMs', 'tokens'],
   });
 
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <Segmented
-          value={statusFilter}
+          value={onlyProblems ? 'problems' : 'all'}
           onChange={(v) => {
-            setStatusFilter(v as 'ALL' | 'FAILED');
+            setOnlyProblems(v === 'problems');
             setPage(1);
           }}
           options={[
-            { label: 'All runs', value: 'ALL' },
-            { label: 'Failures', value: 'FAILED' },
+            { label: 'Everything', value: 'all' },
+            { label: "Only when AI couldn't help", value: 'problems' },
           ]}
         />
         {columnSettings}
       </div>
-      <Table<AiRunDto>
-        rowKey="id"
-        size="small"
-        loading={runs.isFetching}
-        dataSource={runs.data?.items ?? []}
-        pagination={{
-          current: page,
-          pageSize: 20,
-          total: runs.data?.meta.total ?? 0,
-          onChange: setPage,
-          showSizeChanger: false,
-        }}
-        scroll={{ x: 900 }}
-        columns={visibleColumns}
-      />
+      <div className="surface-card overflow-hidden">
+        <Table<AiRunDto>
+          rowKey="id"
+          size="small"
+          loading={runs.isFetching}
+          dataSource={runs.data?.items ?? []}
+          pagination={{
+            current: page,
+            pageSize: 20,
+            total: runs.data?.meta.total ?? 0,
+            onChange: setPage,
+            showSizeChanger: false,
+          }}
+          scroll={{ x: 'max-content' }}
+          columns={visibleColumns}
+          locale={{ emptyText: 'No AI activity yet.' }}
+        />
+      </div>
     </div>
   );
 }
 
-function CreateStrategyModal({
+/** Creates a new setting as an (inactive) copy of the one currently used for that area. */
+function CreateSettingModal({
   open,
   onClose,
-  strategies,
+  settings,
 }: {
   open: boolean;
   onClose: () => void;
-  strategies: AiStrategyDto[];
+  settings: AiStrategyDto[];
 }) {
   const { openTab } = useWorkspaceNav();
   const queryClient = useQueryClient();
@@ -212,24 +200,23 @@ function CreateStrategyModal({
   const [category, setCategory] = useState<TicketCategory>('ROYALTY_PAYMENTS');
   const [name, setName] = useState('');
   const scopeCategory = kind === 'CLASSIFICATION' ? null : category;
-  // New strategies start from the configuration currently active for the same scope.
   const template =
-    strategies.find((s) => s.kind === kind && s.category === scopeCategory && s.enabled) ??
-    strategies.find((s) => s.kind === kind && s.category === scopeCategory);
+    settings.find((s) => s.kind === kind && s.category === scopeCategory && s.enabled) ??
+    settings.find((s) => s.kind === kind && s.category === scopeCategory);
 
   const create = useMutation({
-    mutationFn: () =>
-      endpoints.ai.create({
+    mutationFn: () => {
+      if (!template) throw new Error('There is no existing setting to copy for this area.');
+      return endpoints.ai.create({
         name: name.trim(),
         kind,
         category: scopeCategory,
-        purpose: template?.purpose ?? '',
+        purpose: template.purpose,
         enabled: false,
-        config: template!.config,
-        changeNote: template
-          ? `Created from "${template.name}" v${template.activeVersion}`
-          : 'Initial version',
-      }),
+        config: template.config,
+        changeNote: `Copied from "${template.name}"`,
+      });
+    },
     onSuccess: (s) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.ai.strategies });
       onClose();
@@ -242,28 +229,25 @@ function CreateStrategyModal({
     <Modal
       open={open}
       onCancel={onClose}
-      title="New AI strategy"
-      okText="Create (disabled)"
+      title="Create a new setting"
+      okText="Create"
       okButtonProps={{ disabled: name.trim().length < 3 || !template, loading: create.isPending }}
       onOk={() => create.mutate()}
       destroyOnHidden
     >
       <div className="flex flex-col gap-3 py-2">
         <label className="text-sm">
-          Type
+          What should it control?
           <Select
             className="mt-1 w-full"
             value={kind}
             onChange={setKind}
-            options={(['CLASSIFICATION', 'PRIORITY', 'RESPONSE'] as const).map((k) => ({
-              value: k,
-              label: AI_STRATEGY_KIND_LABELS[k],
-            }))}
+            options={KINDS.map((k) => ({ value: k, label: SETTING_KIND[k].label }))}
           />
         </label>
         {kind !== 'CLASSIFICATION' ? (
           <label className="text-sm">
-            Category
+            For which category?
             <Select
               className="mt-1 w-full"
               value={category}
@@ -286,8 +270,8 @@ function CreateStrategyModal({
           />
         </label>
         <p className="text-xs text-ink-muted">
-          The new strategy copies the active configuration for this scope and starts{' '}
-          <strong>disabled</strong>. Edit and test it, then enable it to replace the current one.
+          It starts as a copy of the setting used today and stays <strong>off</strong> until you
+          switch it on, so nothing changes for authors while you edit and try it.
         </p>
         {create.isError ? <Alert type="error" showIcon title={errorMessage(create.error)} /> : null}
       </div>
@@ -298,7 +282,7 @@ function CreateStrategyModal({
 export function StrategiesView() {
   const { openTab } = useWorkspaceNav();
   const queryClient = useQueryClient();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const [kind, setKind] = useState<AiStrategyKind>('RESPONSE');
   const [creating, setCreating] = useState(false);
   const strategies = useQuery({
@@ -311,7 +295,7 @@ export function StrategiesView() {
       endpoints.ai.update(id, { enabled, activate: true }),
     onSuccess: (s) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.ai.all });
-      message.success(`${s.name} ${s.enabled ? 'enabled' : 'disabled'}`);
+      message.success(`"${s.name}" is now ${s.enabled ? 'in use' : 'switched off'}`);
     },
     onError: (err) => message.error(errorMessage(err)),
   });
@@ -324,53 +308,58 @@ export function StrategiesView() {
     onError: (err) => message.error(errorMessage(err)),
   });
 
+  /** Only one setting can be in use per area — explain what switching does before doing it. */
+  const confirmToggle = (s: AiStrategyDto, enabled: boolean) => {
+    modal.confirm({
+      title: enabled ? `Start using "${s.name}"?` : `Stop using "${s.name}"?`,
+      content: enabled
+        ? 'It will be used from now on, and the setting used today for this area will be switched off.'
+        : 'AI will fall back to BookLeaf’s standard behaviour for this area until another setting is switched on.',
+      okText: enabled ? 'Start using it' : 'Stop using it',
+      onOk: () => toggle.mutateAsync({ id: s.id, enabled }),
+    });
+  };
+
   const rows = (strategies.data ?? []).filter((s) => s.kind === kind);
   const columns: ColumnsType<AiStrategyDto> = [
     {
-      title: 'Strategy',
+      title: 'Setting',
       key: 'name',
       render: (_, s) => (
         <div>
-          <p className="font-medium">
-            {s.name} {s.isDefault ? <Tag className="!ml-1">Default</Tag> : null}
-          </p>
-          <p className="line-clamp-1 text-xs text-ink-subtle">{s.purpose}</p>
+          <p className="font-medium">{s.name}</p>
+          {s.purpose ? <p className="line-clamp-1 text-xs text-ink-subtle">{s.purpose}</p> : null}
         </div>
       ),
     },
     {
-      title: 'Scope',
+      title: 'Category',
       key: 'scope',
       width: 220,
-      responsive: ['md'],
       render: (_, s) => (s.category ? TICKET_CATEGORY_LABELS[s.category] : 'All tickets'),
     },
     {
-      title: 'Version',
-      key: 'version',
+      title: 'In use',
+      key: 'enabled',
       width: 100,
-      render: (_, s) =>
-        `v${s.activeVersion}${s.latestVersion > s.activeVersion ? ` (latest v${s.latestVersion})` : ''}`,
-    },
-    {
-      title: 'Runs',
-      key: 'runs',
-      width: 110,
-      responsive: ['lg'],
       render: (_, s) => (
-        <span className="tabular-nums">
-          {s.stats.runs}
-          {s.stats.failures ? (
-            <span className="text-danger"> · {s.stats.failures} failed</span>
-          ) : null}
+        <span onClick={(e) => e.stopPropagation()}>
+          <Tooltip title={s.enabled ? 'This setting is being used' : 'Not used right now'}>
+            <Switch
+              size="small"
+              checked={s.enabled}
+              loading={toggle.isPending && toggle.variables?.id === s.id}
+              onChange={(enabled) => confirmToggle(s, enabled)}
+              aria-label={`Use ${s.name}`}
+            />
+          </Tooltip>
         </span>
       ),
     },
     {
-      title: 'Updated',
+      title: 'Last changed',
       key: 'updated',
-      width: 170,
-      responsive: ['xl'],
+      width: 200,
       render: (_, s) => (
         <span className="text-xs text-ink-muted">
           {formatDateTime(s.updatedAt)}
@@ -378,19 +367,18 @@ export function StrategiesView() {
         </span>
       ),
     },
+    // Technical detail — hidden by default.
+    { title: 'Version', key: 'version', width: 90, render: (_, s) => `v${s.activeVersion}` },
     {
-      title: 'Enabled',
-      key: 'enabled',
-      width: 90,
+      title: 'Times used',
+      key: 'runs',
+      width: 140,
       render: (_, s) => (
-        <span onClick={(e) => e.stopPropagation()}>
-          <Switch
-            size="small"
-            checked={s.enabled}
-            loading={toggle.isPending && toggle.variables?.id === s.id}
-            onChange={(enabled) => toggle.mutate({ id: s.id, enabled })}
-            aria-label={`Enable ${s.name}`}
-          />
+        <span className="tabular-nums">
+          {s.stats.runs}
+          {s.stats.failures ? (
+            <span className="text-warning"> · {s.stats.failures} problems</span>
+          ) : null}
         </span>
       ),
     },
@@ -399,7 +387,7 @@ export function StrategiesView() {
       key: 'actions',
       width: 60,
       render: (_, s) => (
-        <Tooltip title="Duplicate">
+        <Tooltip title="Make a copy to try changes safely">
           <Button
             size="small"
             type="text"
@@ -409,29 +397,29 @@ export function StrategiesView() {
               e.stopPropagation();
               duplicate.mutate(s.id);
             }}
-            aria-label={`Duplicate ${s.name}`}
+            aria-label={`Make a copy of ${s.name}`}
           />
         </Tooltip>
       ),
     },
   ];
-  const { visibleColumns, columnSettings } = useColumnVisibility('ai-strategies', columns, {
+  const { visibleColumns, columnSettings } = useColumnVisibility('ai-settings', columns, {
     locked: ['name', 'enabled'],
+    defaultHidden: ['version', 'runs'],
   });
 
   return (
     <div>
       <PageHeader
-        title="AI strategies"
-        description="Configure how the assistant classifies, prioritises and drafts replies — per category, versioned, without code changes."
+        title="AI settings"
+        description="Choose how AI sorts new tickets, decides how urgent they are, and writes draft replies. Every change is kept in History, so you can always undo it."
         actions={
           <Button
-            type="primary"
             icon={<PlusOutlined />}
             onClick={() => setCreating(true)}
             disabled={!strategies.data}
           >
-            New strategy
+            Create new setting
           </Button>
         }
       />
@@ -439,33 +427,23 @@ export function StrategiesView() {
       <Tabs
         items={[
           {
-            key: 'strategies',
-            label: 'Strategies',
+            key: 'settings',
+            label: 'Settings',
             children: strategies.isPending ? (
               <LoadingBlock />
             ) : strategies.isError ? (
               <ErrorState error={strategies.error} onRetry={() => void strategies.refetch()} />
             ) : (
               <div>
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <Segmented
                     value={kind}
                     onChange={(v) => setKind(v as AiStrategyKind)}
-                    options={(['CLASSIFICATION', 'PRIORITY', 'RESPONSE'] as const).map((k) => ({
-                      value: k,
-                      label: AI_STRATEGY_KIND_LABELS[k],
-                    }))}
+                    options={KINDS.map((k) => ({ value: k, label: SETTING_KIND[k].label }))}
                   />
                   {columnSettings}
                 </div>
-                <p className="mb-3 text-xs text-ink-muted">
-                  {kind === 'CLASSIFICATION'
-                    ? 'One global strategy classifies every ticket. It runs in the same model call as priority scoring.'
-                    : kind === 'PRIORITY'
-                      ? 'Per-category rubric lines are given to the model; floor rules deterministically raise priority (never lower).'
-                      : 'Per-category reply drafting: instructions, tone and which knowledge-base sections to ground on.'}{' '}
-                  Exactly one strategy can be enabled per scope.
-                </p>
+                <p className="mb-3 text-sm text-ink-muted">{SETTING_KIND[kind].explain}</p>
                 <div className="surface-card overflow-hidden">
                   <Table<AiStrategyDto>
                     scroll={{ x: 'max-content' }}
@@ -479,16 +457,17 @@ export function StrategiesView() {
                     columns={visibleColumns}
                   />
                 </div>
+                <p className="mt-2 text-xs text-ink-subtle">Click a setting to see or change it.</p>
               </div>
             ),
           },
-          { key: 'runs', label: 'Run log', children: <RunLog /> },
+          { key: 'activity', label: 'AI activity', children: <AiActivity /> },
         ]}
       />
-      <CreateStrategyModal
+      <CreateSettingModal
         open={creating}
         onClose={() => setCreating(false)}
-        strategies={strategies.data ?? []}
+        settings={strategies.data ?? []}
       />
     </div>
   );

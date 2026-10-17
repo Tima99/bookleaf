@@ -19,35 +19,57 @@ export function BookDetails({ book }: { book: BookDto }) {
         </div>
       </div>
 
-      <Descriptions column={1} size="small" bordered>
-        <Descriptions.Item label="ISBN">
-          {book.isbn ?? <span className="text-ink-subtle">Assigned during production</span>}
-        </Descriptions.Item>
-        <Descriptions.Item label="Status">{book.status}</Descriptions.Item>
-        <Descriptions.Item label="Publication date">
-          {book.publicationDate ? formatDate(book.publicationDate) : NOT_YET}
-        </Descriptions.Item>
-        <Descriptions.Item label="MRP">
-          {book.mrp !== null ? formatINR(book.mrp) : NOT_YET}
-        </Descriptions.Item>
-        <Descriptions.Item label="Royalty per copy">
-          {book.authorRoyaltyPerCopy !== null ? formatINR(book.authorRoyaltyPerCopy) : NOT_YET}
-        </Descriptions.Item>
-        <Descriptions.Item label="Print partner">
-          {book.printPartner ?? <span className="text-ink-subtle">Not assigned yet</span>}
-        </Descriptions.Item>
-        <Descriptions.Item label="Available on">
-          {book.availableOn.length ? (
-            <div className="flex flex-wrap gap-1">
-              {book.availableOn.map((p) => (
-                <Tag key={p}>{p}</Tag>
-              ))}
-            </div>
-          ) : (
-            <span className="text-ink-subtle">Not listed yet</span>
-          )}
-        </Descriptions.Item>
-      </Descriptions>
+      <Descriptions
+        column={1}
+        size="small"
+        bordered
+        items={[
+          {
+            key: 'isbn',
+            label: 'ISBN',
+            children: book.isbn ?? (
+              <span className="text-ink-subtle">Assigned during production</span>
+            ),
+          },
+          { key: 'status', label: 'Status', children: book.status },
+          {
+            key: 'publication-date',
+            label: 'Publication date',
+            children: book.publicationDate ? formatDate(book.publicationDate) : NOT_YET,
+          },
+          {
+            key: 'mrp',
+            label: 'MRP',
+            children: book.mrp !== null ? formatINR(book.mrp) : NOT_YET,
+          },
+          {
+            key: 'royalty-per-copy',
+            label: 'Royalty per copy',
+            children:
+              book.authorRoyaltyPerCopy !== null ? formatINR(book.authorRoyaltyPerCopy) : NOT_YET,
+          },
+          {
+            key: 'print-partner',
+            label: 'Print partner',
+            children: book.printPartner ?? (
+              <span className="text-ink-subtle">Not assigned yet</span>
+            ),
+          },
+          {
+            key: 'available-on',
+            label: 'Available on',
+            children: book.availableOn.length ? (
+              <div className="flex flex-wrap gap-1">
+                {book.availableOn.map((p) => (
+                  <Tag key={p}>{p}</Tag>
+                ))}
+              </div>
+            ) : (
+              <span className="text-ink-subtle">Not listed yet</span>
+            ),
+          },
+        ]}
+      />
 
       <div>
         <p className="section-title mb-2">Sales &amp; royalties</p>

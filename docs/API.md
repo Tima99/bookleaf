@@ -233,6 +233,6 @@ generatedAt, stale, usage{inputTokens,outputTokens}|null`.
 
 `config` (`AiStrategyConfig`): `instructions` (20–6000), `categoryInstructions` (≤3000),
 `tone` (≤800), `priorityRules[]` (≤15 × 300), `floorRules[]` (`{label, keywords[1..25],
-minimumPriority}`), `knowledgeSections[]`, `provider` (`anthropic|openai`), `model`,
+minimumPriority}`), `knowledgeSections[]`, `provider` (`openai|anthropic`), `model`,
 `temperature` (0–1 or null), `maxOutputTokens` (64–4000), `includeExamples`,
 `maxHistoryMessages` (0–20).

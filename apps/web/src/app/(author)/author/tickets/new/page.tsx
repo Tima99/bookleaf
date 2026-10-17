@@ -23,25 +23,6 @@ const FormSchema = z.object({
 });
 type FormValues = z.infer<typeof FormSchema>;
 
-const TIPS: Array<{ match: RegExp; text: string }> = [
-  {
-    match: /royalt|payout|payment/i,
-    text: 'Royalties are calculated quarterly and paid within 45 days of each quarter ending. Balances under ₹1,000 roll over.',
-  },
-  {
-    match: /isbn/i,
-    text: 'ISBN issues are treated as high priority and escalated to our production team.',
-  },
-  {
-    match: /print|blurry|binding|misprint|pages/i,
-    text: 'For print defects, photos of the affected pages help us arrange a free reprint faster.',
-  },
-  {
-    match: /unavailable|out of stock|amazon|flipkart/i,
-    text: 'Availability issues are usually a stock sync — our team can re-sync within 24–48 hours.',
-  },
-];
-
 function NewTicketForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -82,13 +63,9 @@ function NewTicketForm() {
     },
   });
 
-  const [watchedBook, watchedSubject, watchedDescription] = useWatch({
-    control,
-    name: ['bookId', 'subject', 'description'],
-  });
+  // The production-stage notice uses the book's real status — no guessing from text.
+  const watchedBook = useWatch({ control, name: 'bookId' });
   const selectedBook = books.data?.items.find((b) => b.bookCode === watchedBook);
-  const text = `${watchedSubject} ${watchedDescription}`;
-  const tip = TIPS.find((t) => t.match.test(text));
 
   return (
     <PageTransition>
@@ -229,7 +206,6 @@ function NewTicketForm() {
               <li>You&apos;ll see replies instantly on the ticket page — no refresh needed.</li>
             </ol>
           </Section>
-          {tip ? <Alert type="info" showIcon title="Good to know" description={tip.text} /> : null}
         </aside>
       </div>
     </PageTransition>

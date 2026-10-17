@@ -135,7 +135,21 @@ export class StrategyService {
     let created = 0;
     for (const def of this.defaults) {
       const exists = await AiStrategyModel.exists({ key: def.key });
-      if (exists) continue;
+      if (exists) {
+        // Plain-language names replaced the original technical ones; only untouched names move.
+        if (def.legacy) {
+          const renamed = await AiStrategyModel.updateOne(
+            { key: def.key, isDefault: true, name: def.legacy.name },
+            { $set: { name: def.name } },
+          );
+          const described = await AiStrategyModel.updateOne(
+            { key: def.key, isDefault: true, purpose: def.legacy.purpose },
+            { $set: { purpose: def.purpose } },
+          );
+          if (renamed.modifiedCount || described.modifiedCount) this.invalidate();
+        }
+        continue;
+      }
       await this.insertStrategy(def, true, null);
       created += 1;
     }

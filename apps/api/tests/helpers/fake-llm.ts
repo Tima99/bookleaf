@@ -14,7 +14,7 @@ export type FakeMode = 'ok' | 'rate_limited' | 'timeout' | 'invalid' | 'not_conf
  * Records every request so tests can assert on prompt composition and cost controls.
  */
 export class FakeLlm implements LlmClient {
-  readonly provider: AiProvider = 'anthropic';
+  readonly provider: AiProvider = 'openai';
   mode: FakeMode = 'ok';
   calls: Array<StructuredRequest<unknown>> = [];
   triage: TriageOutput = {
@@ -61,7 +61,7 @@ export class FakeLlm implements LlmClient {
         const raw = request.task === 'triage' ? this.triage : this.draft;
         return {
           object: request.schema.parse(raw),
-          provider: 'anthropic',
+          provider: 'openai',
           model: this.defaultModel(request.task),
           latencyMs: 12,
           usage: { inputTokens: 500, outputTokens: 120 },

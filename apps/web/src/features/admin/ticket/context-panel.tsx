@@ -10,6 +10,9 @@ import { tokens } from '@/styles/tokens';
 import { useWorkspaceNav } from '../workspace/use-workspace-nav';
 
 /** Author + book facts the agent needs while replying, and the ticket's audit trail. */
+/** Muted, fixed-width labels for the fact lists (antd 6 semantic `styles`). */
+const LABEL_STYLES = { label: { color: tokens.color.inkMuted, width: 110 } };
+
 export function ContextPanel({ ticket }: { ticket: AdminTicketDetailDto }) {
   const { openTab } = useWorkspaceNav();
   const a = ticket.authorProfile;
@@ -34,17 +37,16 @@ export function ContextPanel({ ticket }: { ticket: AdminTicketDetailDto }) {
           column={1}
           size="small"
           colon={false}
-          labelStyle={{ color: tokens.color.inkMuted, width: 110 }}
-        >
-          <Descriptions.Item label="Name">{a.name}</Descriptions.Item>
-          <Descriptions.Item label="Author ID">{a.authorCode}</Descriptions.Item>
-          <Descriptions.Item label="Email">
-            <a href={`mailto:${a.email}`}>{a.email}</a>
-          </Descriptions.Item>
-          <Descriptions.Item label="Phone">{a.phone ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="City">{a.city ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="Joined">{formatDate(a.joinedDate)}</Descriptions.Item>
-        </Descriptions>
+          styles={LABEL_STYLES}
+          items={[
+            { key: 'name', label: 'Name', children: a.name },
+            { key: 'author-id', label: 'Author ID', children: a.authorCode },
+            { key: 'email', label: 'Email', children: <a href={`mailto:${a.email}`}>{a.email}</a> },
+            { key: 'phone', label: 'Phone', children: a.phone ?? '—' },
+            { key: 'city', label: 'City', children: a.city ?? '—' },
+            { key: 'joined', label: 'Joined', children: formatDate(a.joinedDate) },
+          ]}
+        />
       </Section>
 
       <Section title="Book">
@@ -63,35 +65,52 @@ export function ContextPanel({ ticket }: { ticket: AdminTicketDetailDto }) {
               column={1}
               size="small"
               colon={false}
-              labelStyle={{ color: tokens.color.inkMuted, width: 110 }}
-            >
-              <Descriptions.Item label="ISBN">
-                <span className="font-mono text-xs">{b.isbn ?? '—'}</span>
-              </Descriptions.Item>
-              <Descriptions.Item label="Published">
-                {formatDate(b.publicationDate, 'Not yet')}
-              </Descriptions.Item>
-              <Descriptions.Item label="MRP">{formatINR(b.mrp)}</Descriptions.Item>
-              <Descriptions.Item label="Copies sold">
-                {formatNumber(b.totalCopiesSold)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Royalty earned">
-                {formatINR(b.totalRoyaltyEarned)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Paid">{formatINR(b.royaltyPaid)}</Descriptions.Item>
-              <Descriptions.Item label="Pending">
-                <span className={b.royaltyPending > 0 ? 'font-medium text-warning' : ''}>
-                  {formatINR(b.royaltyPending)}
-                </span>
-              </Descriptions.Item>
-              <Descriptions.Item label="Last payout">
-                {formatDate(b.lastRoyaltyPayoutDate, 'None yet')}
-              </Descriptions.Item>
-              <Descriptions.Item label="Print partner">{b.printPartner ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="Available on">
-                {b.availableOn.length ? b.availableOn.join(', ') : 'Not listed'}
-              </Descriptions.Item>
-            </Descriptions>
+              styles={LABEL_STYLES}
+              items={[
+                {
+                  key: 'isbn',
+                  label: 'ISBN',
+                  children: <span className="font-mono text-xs">{b.isbn ?? '—'}</span>,
+                },
+                {
+                  key: 'published',
+                  label: 'Published',
+                  children: formatDate(b.publicationDate, 'Not yet'),
+                },
+                { key: 'mrp', label: 'MRP', children: formatINR(b.mrp) },
+                {
+                  key: 'copies-sold',
+                  label: 'Copies sold',
+                  children: formatNumber(b.totalCopiesSold),
+                },
+                {
+                  key: 'royalty-earned',
+                  label: 'Royalty earned',
+                  children: formatINR(b.totalRoyaltyEarned),
+                },
+                { key: 'paid', label: 'Paid', children: formatINR(b.royaltyPaid) },
+                {
+                  key: 'pending',
+                  label: 'Pending',
+                  children: (
+                    <span className={b.royaltyPending > 0 ? 'font-medium text-warning' : ''}>
+                      {formatINR(b.royaltyPending)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'last-payout',
+                  label: 'Last payout',
+                  children: formatDate(b.lastRoyaltyPayoutDate, 'None yet'),
+                },
+                { key: 'print-partner', label: 'Print partner', children: b.printPartner ?? '—' },
+                {
+                  key: 'available-on',
+                  label: 'Available on',
+                  children: b.availableOn.length ? b.availableOn.join(', ') : 'Not listed',
+                },
+              ]}
+            />
           </div>
         ) : (
           <p className="text-sm text-ink-muted">

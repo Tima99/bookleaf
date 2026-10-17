@@ -12,6 +12,11 @@ export interface StructuredRequest<T> {
   prompt: string;
   /** Model id; empty/undefined → provider default for the task. */
   model?: string;
+  /**
+   * Provider the strategy's model id belongs to. If it differs from the configured
+   * provider, the model id is ignored and the server default is used instead.
+   */
+  provider?: AiProvider;
   temperature?: number | null;
   maxOutputTokens: number;
 }

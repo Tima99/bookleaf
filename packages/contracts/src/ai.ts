@@ -56,7 +56,7 @@ export const AiStrategyConfigSchema = z.object({
   /** Deterministic minimum-priority rules applied after the model (PRIORITY strategies). */
   floorRules: z.array(PriorityFloorRuleSchema).max(STRATEGY_LIMITS.rulesMax).default([]),
   knowledgeSections: z.array(KnowledgeSectionIdSchema).max(8).default([]),
-  provider: AiProviderSchema.default('anthropic'),
+  provider: AiProviderSchema.default('openai'),
   /** Model id; empty string means "use the server default for this task". */
   model: z.string().trim().max(80).default(''),
   /** Ignored for models that reject sampling parameters. */

@@ -3,9 +3,10 @@
 import {
   DeleteOutlined,
   ExperimentOutlined,
-  EyeOutlined,
+  HistoryOutlined,
   PlusOutlined,
   SaveOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,10 +14,12 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   Collapse,
   Form,
   Input,
   InputNumber,
+  Segmented,
   Select,
   Switch,
   Table,
@@ -24,13 +27,11 @@ import {
   Tag,
 } from 'antd';
 import { useEffect, useState } from 'react';
-import { Controller, useFieldArray, useForm } from 'react-hook-form';
+import { Controller, useFieldArray, useForm, type Control } from 'react-hook-form';
 import { z } from 'zod';
 import {
   AI_PROVIDERS,
-  AI_STRATEGY_KIND_LABELS,
   AiStrategyConfigSchema,
-  KNOWLEDGE_SECTION_IDS,
   STRATEGY_LIMITS,
   TICKET_CATEGORY_LABELS,
   TICKET_PRIORITIES,
@@ -45,9 +46,20 @@ import { PriorityTag } from '@/components/ui/tags';
 import { errorMessage } from '@/lib/api-client';
 import { endpoints, queryKeys } from '@/lib/endpoints';
 import { useWorkspace } from '@/stores/workspace-store';
+import { AI_PROBLEM, HISTORY_OPTIONS, REPLY_LENGTHS, SETTING_KIND } from '../ai/plain-language';
+
+/*
+ * AI setting editor for non-technical staff.
+ * The default view only shows plain-language choices; the underlying AI instructions,
+ * model and limits are kept in a collapsed "Advanced" section for technical admins.
+ */
 
 const FormSchema = z.object({
-  name: z.string().trim().min(3).max(STRATEGY_LIMITS.nameMax),
+  name: z
+    .string()
+    .trim()
+    .min(3, 'Give it a name of at least 3 characters')
+    .max(STRATEGY_LIMITS.nameMax),
   purpose: z.string().trim().max(STRATEGY_LIMITS.purposeMax),
   config: AiStrategyConfigSchema,
   changeNote: z.string().trim().max(STRATEGY_LIMITS.changeNoteMax),
@@ -63,17 +75,137 @@ function FieldError({ message }: { message?: string }) {
   return message ? <p className="mt-1 text-xs text-danger">{message}</p> : null;
 }
 
-/* ------------------------------ editor ------------------------------ */
+function Help({ children }: { children: React.ReactNode }) {
+  return <p className="-mt-2 mb-4 text-sm text-ink-muted">{children}</p>;
+}
 
-function StrategyEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: string }) {
+/* --------------------------- "always urgent" rules --------------------------- */
+
+function UrgencyRulesEditor({
+  control,
+  idPrefix,
+  title,
+}: {
+  control: Control<FormInput>;
+  idPrefix: string;
+  title: string;
+}) {
+  const rules = useFieldArray({ control, name: 'config.floorRules' });
+  return (
+    <Section
+      title={title}
+      extra={
+        <Button
+          size="small"
+          icon={<PlusOutlined />}
+          onClick={() => rules.append({ label: '', keywords: [], minimumPriority: 'HIGH' })}
+        >
+          Add a rule
+        </Button>
+      }
+    >
+      <Help>
+        A simple safety net: if a ticket mentions any of the words, it is never less urgent than the
+        level you choose — even if AI thinks otherwise.
+      </Help>
+      <div className="flex flex-col gap-3">
+        {rules.fields.length === 0 ? (
+          <p className="text-sm text-ink-subtle">No rules yet.</p>
+        ) : null}
+        {rules.fields.map((f, index) => (
+          <div key={f.id} className="rounded-lg border border-line bg-surface-muted p-3">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+              <Controller
+                name={`config.floorRules.${index}.label`}
+                control={control}
+                render={({ field, fieldState }) => (
+                  <label className="text-sm" htmlFor={`${idPrefix}-rule-${index}-label`}>
+                    Rule name
+                    <Input
+                      {...field}
+                      id={`${idPrefix}-rule-${index}-label`}
+                      className="mt-1"
+                      placeholder="e.g. Wrong ISBN"
+                      status={fieldState.error ? 'error' : ''}
+                    />
+                    <FieldError
+                      message={fieldState.error ? 'Please give the rule a name' : undefined}
+                    />
+                  </label>
+                )}
+              />
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => rules.remove(index)}
+                className="self-end"
+              >
+                Remove
+              </Button>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-[2fr_1fr]">
+              <Controller
+                name={`config.floorRules.${index}.keywords`}
+                control={control}
+                render={({ field, fieldState }) => (
+                  <label className="text-sm" htmlFor={`${idPrefix}-rule-${index}-words`}>
+                    If the ticket mentions any of these words
+                    <Select
+                      {...field}
+                      id={`${idPrefix}-rule-${index}-words`}
+                      mode="tags"
+                      className="mt-1 w-full"
+                      placeholder="Type a word and press Enter"
+                      tokenSeparators={[',']}
+                      status={fieldState.error ? 'error' : ''}
+                    />
+                    <FieldError message={fieldState.error ? 'Add at least one word' : undefined} />
+                  </label>
+                )}
+              />
+              <Controller
+                name={`config.floorRules.${index}.minimumPriority`}
+                control={control}
+                render={({ field }) => (
+                  <label className="text-sm" htmlFor={`${idPrefix}-rule-${index}-min`}>
+                    …make it at least
+                    <Select
+                      {...field}
+                      id={`${idPrefix}-rule-${index}-min`}
+                      className="mt-1 w-full"
+                      options={TICKET_PRIORITIES.map((p) => ({
+                        value: p,
+                        label: TICKET_PRIORITY_LABELS[p],
+                      }))}
+                    />
+                  </label>
+                )}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+/* --------------------------------- editor --------------------------------- */
+
+function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: string }) {
   const queryClient = useQueryClient();
   const { message } = App.useApp();
   const setDirty = useWorkspace((s) => s.setDirty);
+  const id = (field: string) => `${strategy.id}-${field}`;
+  const kb = useQuery({
+    queryKey: queryKeys.ai.knowledgeBase,
+    queryFn: endpoints.ai.knowledgeBase,
+    staleTime: Infinity,
+  });
   const { control, handleSubmit, reset, formState } = useForm<FormInput, unknown, FormOutput>({
     resolver: zodResolver(FormSchema),
     defaultValues: toFormValues(strategy),
   });
-  const floorRules = useFieldArray({ control, name: 'config.floorRules' });
 
   useEffect(() => setDirty(tabId, formState.isDirty), [formState.isDirty, setDirty, tabId]);
 
@@ -91,382 +223,391 @@ function StrategyEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: s
       void queryClient.invalidateQueries({ queryKey: queryKeys.ai.strategies });
       void queryClient.invalidateQueries({ queryKey: queryKeys.ai.versions(strategy.id) });
       reset(toFormValues(updated));
-      message.success(`Saved as version ${updated.activeVersion} (now active)`);
+      message.success('Saved. AI will use your changes for new tickets.');
     },
   });
 
   const isResponse = strategy.kind === 'RESPONSE';
   const isPriority = strategy.kind === 'PRIORITY';
-  const isClassification = strategy.kind === 'CLASSIFICATION';
+  const isSorting = strategy.kind === 'CLASSIFICATION';
+  const categoryName = strategy.category ? TICKET_CATEGORY_LABELS[strategy.category] : '';
+  const policyOptions = (kb.data ?? [])
+    .filter((k) => k.id !== 'communication-tone')
+    .map((k) => ({ value: k.id, label: k.title }));
 
   return (
     <form onSubmit={handleSubmit((v) => save.mutate(v))} noValidate>
       <Form layout="vertical" component={false}>
-        <div className="grid gap-6 xl:grid-cols-[1fr_340px]">
-          <div className="flex flex-col gap-6">
-            <Section title="Prompt">
-              <Controller
-                name="config.instructions"
-                control={control}
-                render={({ field, fieldState }) => (
-                  <Form.Item
-                    htmlFor={`${strategy.id}-${field.name}`}
-                    label={isPriority ? 'Rubric heading' : 'System instructions'}
-                    required
-                    help={<FieldError message={fieldState.error?.message} />}
-                  >
-                    <Input.TextArea
-                      {...field}
-                      id={`${strategy.id}-${field.name}`}
-                      autoSize={{ minRows: isPriority ? 2 : 10, maxRows: 28 }}
-                      className="!font-mono !text-[12.5px]"
-                      maxLength={STRATEGY_LIMITS.instructionsMax}
-                      showCount
-                    />
-                  </Form.Item>
-                )}
-              />
-              {!isPriority ? (
-                <Controller
-                  name="config.categoryInstructions"
-                  control={control}
-                  render={({ field }) => (
-                    <Form.Item
-                      htmlFor={`${strategy.id}-${field.name}`}
-                      label={
-                        isClassification
-                          ? 'Additional classification guidance'
-                          : 'Category-specific instructions'
-                      }
-                    >
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="flex min-w-0 flex-col gap-6">
+            {/* ------------------------- Writing replies ------------------------- */}
+            {isResponse ? (
+              <>
+                <Section title={`What should AI keep in mind for ${categoryName} replies?`}>
+                  <Help>
+                    Write in plain English — one point per line works well. For example: “Always
+                    give the exact payout date.” Your team still reviews every draft before it is
+                    sent.
+                  </Help>
+                  <Controller
+                    name="config.categoryInstructions"
+                    control={control}
+                    render={({ field }) => (
                       <Input.TextArea
                         {...field}
-                        id={`${strategy.id}-${field.name}`}
-                        autoSize={{ minRows: 5, maxRows: 18 }}
-                        className="!font-mono !text-[12.5px]"
+                        id={id('instructions')}
+                        aria-label="Points for AI to keep in mind"
+                        autoSize={{ minRows: 6, maxRows: 18 }}
                         maxLength={STRATEGY_LIMITS.categoryInstructionsMax}
                         showCount
                       />
-                    </Form.Item>
-                  )}
-                />
-              ) : null}
-              {isResponse ? (
-                <Controller
-                  name="config.tone"
-                  control={control}
-                  render={({ field }) => (
-                    <Form.Item htmlFor={`${strategy.id}-${field.name}`} label="Response tone">
+                    )}
+                  />
+                </Section>
+
+                <Section title="Tone of voice">
+                  <Help>How the replies should sound to authors.</Help>
+                  <Controller
+                    name="config.tone"
+                    control={control}
+                    render={({ field }) => (
                       <Input.TextArea
                         {...field}
-                        id={`${strategy.id}-${field.name}`}
-                        autoSize={{ minRows: 2, maxRows: 6 }}
+                        id={id('tone')}
+                        aria-label="Tone of voice"
+                        autoSize={{ minRows: 2, maxRows: 5 }}
                         maxLength={STRATEGY_LIMITS.toneMax}
                       />
-                    </Form.Item>
-                  )}
-                />
-              ) : null}
-            </Section>
-
-            {isPriority ? (
-              <Section title="Priority rubric (sent to the model)">
-                <Controller
-                  name="config.priorityRules"
-                  control={control}
-                  render={({ field, fieldState }) => (
-                    <Form.Item
-                      htmlFor={`${strategy.id}-${field.name}`}
-                      help={<FieldError message={fieldState.error?.message} />}
-                      extra="One rule per line."
-                    >
-                      <Input.TextArea
-                        id={`${strategy.id}-${field.name}`}
-                        value={(field.value ?? []).join('\n')}
-                        onChange={(e) => field.onChange(e.target.value.split('\n'))}
-                        onBlur={() =>
-                          field.onChange((field.value ?? []).map((r) => r.trim()).filter(Boolean))
-                        }
-                        autoSize={{ minRows: 4, maxRows: 14 }}
-                      />
-                    </Form.Item>
-                  )}
-                />
-              </Section>
-            ) : null}
-
-            {isPriority || isClassification ? (
-              <Section
-                title="Floor rules (deterministic)"
-                extra={
-                  <Button
-                    size="small"
-                    icon={<PlusOutlined />}
-                    onClick={() =>
-                      floorRules.append({ label: '', keywords: [], minimumPriority: 'MEDIUM' })
-                    }
-                  >
-                    Add rule
-                  </Button>
-                }
-              >
-                <p className="-mt-2 mb-4 text-xs text-ink-muted">
-                  If any keyword appears in the ticket, its priority is raised to at least the
-                  minimum — even if the model said lower.
-                </p>
-                <div className="flex flex-col gap-3">
-                  {floorRules.fields.length === 0 ? (
-                    <p className="text-sm text-ink-subtle">No floor rules.</p>
-                  ) : null}
-                  {floorRules.fields.map((f, index) => (
-                    <div
-                      key={f.id}
-                      className="grid gap-2 rounded-lg border border-line p-3 md:grid-cols-[1fr_2fr_140px_auto]"
-                    >
-                      <Controller
-                        name={`config.floorRules.${index}.label`}
-                        control={control}
-                        render={({ field, fieldState }) => (
-                          <div>
-                            <Input
-                              {...field}
-                              id={`${strategy.id}-${field.name}`}
-                              placeholder="Label"
-                              aria-label="Rule label"
-                              status={fieldState.error ? 'error' : ''}
-                            />
-                            <FieldError message={fieldState.error?.message} />
-                          </div>
-                        )}
-                      />
-                      <Controller
-                        name={`config.floorRules.${index}.keywords`}
-                        control={control}
-                        render={({ field, fieldState }) => (
-                          <div>
-                            <Select
-                              {...field}
-                              id={`${strategy.id}-${field.name}`}
-                              mode="tags"
-                              placeholder="Keywords (Enter to add)"
-                              tokenSeparators={[',']}
-                              aria-label="Keywords"
-                              status={fieldState.error ? 'error' : ''}
-                              className="w-full"
-                            />
-                            <FieldError message={fieldState.error?.message} />
-                          </div>
-                        )}
-                      />
-                      <Controller
-                        name={`config.floorRules.${index}.minimumPriority`}
-                        control={control}
-                        render={({ field }) => (
-                          <Select
-                            {...field}
-                            id={`${strategy.id}-${field.name}`}
-                            aria-label="Minimum priority"
-                            options={TICKET_PRIORITIES.map((p) => ({
-                              value: p,
-                              label: `≥ ${TICKET_PRIORITY_LABELS[p]}`,
-                            }))}
-                          />
-                        )}
-                      />
-                      <Button
-                        type="text"
-                        danger
-                        icon={<DeleteOutlined />}
-                        onClick={() => floorRules.remove(index)}
-                        aria-label="Remove rule"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            ) : null}
-          </div>
-
-          <div className="flex flex-col gap-6">
-            <Section title="Details">
-              <Controller
-                name="name"
-                control={control}
-                render={({ field, fieldState }) => (
-                  <Form.Item
-                    htmlFor={`${strategy.id}-${field.name}`}
-                    label="Name"
-                    required
-                    help={<FieldError message={fieldState.error?.message} />}
-                  >
-                    <Input {...field} id={`${strategy.id}-${field.name}`} />
-                  </Form.Item>
-                )}
-              />
-              <Controller
-                name="purpose"
-                control={control}
-                render={({ field }) => (
-                  <Form.Item htmlFor={`${strategy.id}-${field.name}`} label="Purpose">
-                    <Input.TextArea
-                      {...field}
-                      id={`${strategy.id}-${field.name}`}
-                      autoSize={{ minRows: 2, maxRows: 5 }}
-                    />
-                  </Form.Item>
-                )}
-              />
-            </Section>
-
-            {!isPriority ? (
-              <Section title="Model & budget">
-                <div className="grid grid-cols-2 gap-x-3">
-                  <Controller
-                    name="config.provider"
-                    control={control}
-                    render={({ field }) => (
-                      <Form.Item
-                        htmlFor={`${strategy.id}-${field.name}`}
-                        label="Provider"
-                        extra="Must match the server's configured key"
-                      >
-                        <Select
-                          {...field}
-                          id={`${strategy.id}-${field.name}`}
-                          options={AI_PROVIDERS.map((p) => ({ value: p, label: p }))}
-                        />
-                      </Form.Item>
                     )}
                   />
+                </Section>
+
+                <Section title="Company policies AI should follow">
+                  <Help>
+                    AI always reads the policies you tick. It may also read another policy if the
+                    author’s question is clearly about it. BookLeaf’s tone guidelines are always
+                    included.
+                  </Help>
                   <Controller
-                    name="config.model"
+                    name="config.knowledgeSections"
                     control={control}
                     render={({ field }) => (
-                      <Form.Item
-                        htmlFor={`${strategy.id}-${field.name}`}
-                        label="Model"
-                        extra="Blank = server default"
-                      >
-                        <Input
-                          {...field}
-                          id={`${strategy.id}-${field.name}`}
-                          placeholder={isResponse ? 'claude-opus-5-5' : 'claude-haiku-5-5'}
-                        />
-                      </Form.Item>
+                      <Checkbox.Group
+                        value={field.value ?? []}
+                        onChange={(v) => field.onChange(v)}
+                        options={policyOptions}
+                        className="flex flex-col gap-2"
+                      />
                     )}
                   />
-                  <Controller
-                    name="config.maxOutputTokens"
-                    control={control}
-                    render={({ field }) => (
-                      <Form.Item htmlFor={`${strategy.id}-${field.name}`} label="Max output tokens">
-                        <InputNumber
-                          {...field}
-                          id={`${strategy.id}-${field.name}`}
-                          min={64}
-                          max={4000}
-                          step={50}
-                          className="!w-full"
-                        />
-                      </Form.Item>
-                    )}
-                  />
-                  <Controller
-                    name="config.temperature"
-                    control={control}
-                    render={({ field }) => (
-                      <Form.Item
-                        htmlFor={`${strategy.id}-${field.name}`}
-                        label="Temperature"
-                        extra="Blank = model default"
-                      >
-                        <InputNumber
-                          id={`${strategy.id}-${field.name}`}
-                          value={field.value ?? null}
-                          onChange={(v) => field.onChange(v ?? null)}
-                          min={0}
-                          max={1}
-                          step={0.1}
-                          className="!w-full"
-                        />
-                      </Form.Item>
-                    )}
-                  />
-                </div>
-                {isResponse ? (
-                  <>
+                </Section>
+
+                <Section title="Reply options">
+                  <div className="flex flex-col gap-5">
                     <Controller
-                      name="config.knowledgeSections"
+                      name="config.maxOutputTokens"
+                      control={control}
+                      render={({ field }) => {
+                        const preset = REPLY_LENGTHS.some((r) => r.value === field.value);
+                        return (
+                          <div>
+                            <p className="mb-1 text-sm font-medium">Reply length</p>
+                            <Segmented
+                              value={field.value}
+                              onChange={(v) => field.onChange(Number(v))}
+                              options={[
+                                ...REPLY_LENGTHS.map((r) => ({ value: r.value, label: r.label })),
+                                ...(preset || field.value === undefined
+                                  ? []
+                                  : [{ value: field.value, label: 'Custom' }]),
+                              ]}
+                            />
+                          </div>
+                        );
+                      }}
+                    />
+                    <Controller
+                      name="config.maxHistoryMessages"
                       control={control}
                       render={({ field }) => (
-                        <Form.Item
-                          htmlFor={`${strategy.id}-${field.name}`}
-                          label="Pinned knowledge-base sections"
-                          extra="Always included; other relevant sections are added by keyword match (max 3 total)."
-                        >
+                        <label className="text-sm font-medium" htmlFor={id('history')}>
+                          How much of the conversation AI reads
                           <Select
-                            {...field}
-                            id={`${strategy.id}-${field.name}`}
-                            mode="multiple"
-                            options={KNOWLEDGE_SECTION_IDS.filter(
-                              (k) => k !== 'communication-tone',
-                            ).map((k) => ({ value: k, label: k }))}
+                            id={id('history')}
+                            className="mt-1 !block w-full max-w-sm"
+                            value={field.value}
+                            onChange={field.onChange}
+                            options={[
+                              ...HISTORY_OPTIONS.map((h) => ({ value: h.value, label: h.label })),
+                              ...(HISTORY_OPTIONS.some((h) => h.value === field.value) ||
+                              field.value === undefined
+                                ? []
+                                : [
+                                    {
+                                      value: field.value,
+                                      label: `The last ${field.value} messages`,
+                                    },
+                                  ]),
+                            ]}
                           />
-                        </Form.Item>
+                        </label>
                       )}
                     />
-                    <div className="grid grid-cols-2 gap-x-3">
-                      <Controller
-                        name="config.maxHistoryMessages"
-                        control={control}
-                        render={({ field }) => (
-                          <Form.Item
-                            htmlFor={`${strategy.id}-${field.name}`}
-                            label="History messages"
-                            extra="Latest N public messages"
-                          >
-                            <InputNumber
-                              {...field}
-                              id={`${strategy.id}-${field.name}`}
-                              min={0}
-                              max={20}
-                              className="!w-full"
-                            />
-                          </Form.Item>
-                        )}
-                      />
-                      <Controller
-                        name="config.includeExamples"
-                        control={control}
-                        render={({ field }) => (
-                          <Form.Item
-                            htmlFor={`${strategy.id}-${field.name}`}
-                            label="Calibration example"
-                          >
-                            <Switch
-                              id={`${strategy.id}-${field.name}`}
-                              checked={field.value}
-                              onChange={field.onChange}
-                            />
-                          </Form.Item>
-                        )}
-                      />
-                    </div>
-                  </>
-                ) : null}
-              </Section>
+                    <Controller
+                      name="config.includeExamples"
+                      control={control}
+                      render={({ field }) => (
+                        <label className="flex items-start gap-3 text-sm" htmlFor={id('examples')}>
+                          <Switch
+                            id={id('examples')}
+                            checked={field.value}
+                            onChange={field.onChange}
+                          />
+                          <span>
+                            <span className="font-medium">
+                              Use BookLeaf’s example answer as a guide
+                            </span>
+                            <span className="block text-ink-muted">
+                              Shows AI how a similar question was answered well, so drafts match
+                              your style.
+                            </span>
+                          </span>
+                        </label>
+                      )}
+                    />
+                  </div>
+                </Section>
+              </>
             ) : null}
 
-            <Section>
+            {/* ------------------------- Setting urgency ------------------------- */}
+            {isPriority ? (
+              <>
+                <Section title={`When are ${categoryName} tickets urgent?`}>
+                  <Help>
+                    Describe it in plain words, one per line. For example: “No royalty for 6 months
+                    or more → High”. AI uses these as guidance.
+                  </Help>
+                  <Controller
+                    name="config.priorityRules"
+                    control={control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Input.TextArea
+                          id={id('urgency-guidance')}
+                          aria-label="Urgency guidance"
+                          value={(field.value ?? []).join('\n')}
+                          onChange={(e) => field.onChange(e.target.value.split('\n'))}
+                          onBlur={() =>
+                            field.onChange((field.value ?? []).map((r) => r.trim()).filter(Boolean))
+                          }
+                          autoSize={{ minRows: 4, maxRows: 14 }}
+                        />
+                        <FieldError
+                          message={
+                            fieldState.error ? 'Each line should be a short sentence.' : undefined
+                          }
+                        />
+                      </>
+                    )}
+                  />
+                </Section>
+                <UrgencyRulesEditor
+                  control={control}
+                  idPrefix={strategy.id}
+                  title="Always at least this urgent when…"
+                />
+              </>
+            ) : null}
+
+            {/* ------------------------- Sorting tickets ------------------------- */}
+            {isSorting ? (
+              <>
+                <UrgencyRulesEditor
+                  control={control}
+                  idPrefix={strategy.id}
+                  title="For any category: always at least this urgent when…"
+                />
+                <Section title="Anything else AI should know when sorting tickets? (optional)">
+                  <Help>
+                    For example: “Questions about author copies are Printing & Quality, not
+                    General.”
+                  </Help>
+                  <Controller
+                    name="config.categoryInstructions"
+                    control={control}
+                    render={({ field }) => (
+                      <Input.TextArea
+                        {...field}
+                        id={id('sorting-notes')}
+                        aria-label="Extra guidance for sorting"
+                        autoSize={{ minRows: 3, maxRows: 12 }}
+                        maxLength={STRATEGY_LIMITS.categoryInstructionsMax}
+                      />
+                    )}
+                  />
+                </Section>
+              </>
+            ) : null}
+
+            {/* ------------------------------ Advanced ----------------------------- */}
+            <Collapse
+              items={[
+                {
+                  key: 'advanced',
+                  label: (
+                    <span className="flex items-center gap-2">
+                      <SettingOutlined /> Advanced settings — for technical admins
+                    </span>
+                  ),
+                  children: (
+                    <div className="flex flex-col gap-1">
+                      <Alert
+                        className="!mb-4"
+                        type="warning"
+                        showIcon
+                        title="Changes here affect everything AI does in this area. Use “Try it” before saving."
+                      />
+                      <Controller
+                        name="name"
+                        control={control}
+                        render={({ field, fieldState }) => (
+                          <Form.Item
+                            htmlFor={id('name')}
+                            label="Setting name"
+                            help={<FieldError message={fieldState.error?.message} />}
+                          >
+                            <Input {...field} id={id('name')} />
+                          </Form.Item>
+                        )}
+                      />
+                      <Controller
+                        name="purpose"
+                        control={control}
+                        render={({ field }) => (
+                          <Form.Item htmlFor={id('purpose')} label="Description">
+                            <Input.TextArea
+                              {...field}
+                              id={id('purpose')}
+                              autoSize={{ minRows: 2, maxRows: 4 }}
+                            />
+                          </Form.Item>
+                        )}
+                      />
+                      <Controller
+                        name="config.instructions"
+                        control={control}
+                        render={({ field, fieldState }) => (
+                          <Form.Item
+                            htmlFor={id('prompt')}
+                            label="Main AI instructions (prompt)"
+                            help={<FieldError message={fieldState.error?.message} />}
+                          >
+                            <Input.TextArea
+                              {...field}
+                              id={id('prompt')}
+                              autoSize={{ minRows: 8, maxRows: 24 }}
+                              className="!font-mono !text-[12.5px]"
+                              maxLength={STRATEGY_LIMITS.instructionsMax}
+                              showCount
+                            />
+                          </Form.Item>
+                        )}
+                      />
+                      {!isPriority ? (
+                        <div className="grid gap-x-3 sm:grid-cols-2">
+                          <Controller
+                            name="config.provider"
+                            control={control}
+                            render={({ field }) => (
+                              <Form.Item
+                                htmlFor={id('provider')}
+                                label="AI provider"
+                                extra="Must match the server's configured provider"
+                              >
+                                <Select
+                                  {...field}
+                                  id={id('provider')}
+                                  options={AI_PROVIDERS.map((p) => ({ value: p, label: p }))}
+                                />
+                              </Form.Item>
+                            )}
+                          />
+                          <Controller
+                            name="config.model"
+                            control={control}
+                            render={({ field }) => (
+                              <Form.Item
+                                htmlFor={id('model')}
+                                label="Model"
+                                extra="Blank = server default"
+                              >
+                                <Input
+                                  {...field}
+                                  id={id('model')}
+                                  placeholder={isResponse ? 'gpt-6.1-sol' : 'gpt-6-luna'}
+                                />
+                              </Form.Item>
+                            )}
+                          />
+                          <Controller
+                            name="config.temperature"
+                            control={control}
+                            render={({ field }) => (
+                              <Form.Item
+                                htmlFor={id('temperature')}
+                                label="Temperature"
+                                extra="Blank = model default"
+                              >
+                                <InputNumber
+                                  id={id('temperature')}
+                                  value={field.value ?? null}
+                                  onChange={(v) => field.onChange(v ?? null)}
+                                  min={0}
+                                  max={1}
+                                  step={0.1}
+                                  className="!w-full"
+                                />
+                              </Form.Item>
+                            )}
+                          />
+                          <Controller
+                            name="config.maxOutputTokens"
+                            control={control}
+                            render={({ field }) => (
+                              <Form.Item htmlFor={id('max-tokens')} label="Max output tokens">
+                                <InputNumber
+                                  {...field}
+                                  id={id('max-tokens')}
+                                  min={64}
+                                  max={4000}
+                                  step={50}
+                                  className="!w-full"
+                                />
+                              </Form.Item>
+                            )}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          </div>
+
+          {/* ------------------- Right column: save + about ------------------- */}
+          <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-4">
+            <Section title="Save your changes">
               <Controller
                 name="changeNote"
                 control={control}
                 render={({ field }) => (
-                  <Form.Item htmlFor={`${strategy.id}-${field.name}`} label="Change note">
+                  <Form.Item htmlFor={id('change-note')} label="What did you change? (optional)">
                     <Input
                       {...field}
-                      id={`${strategy.id}-${field.name}`}
-                      placeholder="What changed and why?"
+                      id={id('change-note')}
+                      placeholder="e.g. Asked AI to always mention the payout date"
                       maxLength={STRATEGY_LIMITS.changeNoteMax}
                     />
                   </Form.Item>
@@ -483,7 +624,7 @@ function StrategyEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: s
                   title="Please fix the highlighted fields."
                 />
               ) : null}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   htmlType="submit"
                   type="primary"
@@ -491,34 +632,50 @@ function StrategyEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: s
                   loading={save.isPending}
                   disabled={!formState.isDirty}
                 >
-                  Save as v{strategy.latestVersion + 1}
+                  Save changes
                 </Button>
                 <Button onClick={() => reset(toFormValues(strategy))} disabled={!formState.isDirty}>
-                  Discard
+                  Discard changes
                 </Button>
               </div>
               <p className="mt-2 text-xs text-ink-subtle">
-                Saving creates a new immutable version and activates it for future tickets. Past AI
-                results keep the version they used.
+                Saving applies your changes to new tickets straight away. The previous version is
+                kept in History, so you can always go back.
               </p>
             </Section>
-          </div>
+            <Section title="About this setting">
+              <p className="text-sm text-ink-muted">{SETTING_KIND[strategy.kind].explain}</p>
+              <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+                <dt className="text-ink-subtle">Applies to</dt>
+                <dd>{categoryName || 'All tickets'}</dd>
+                <dt className="text-ink-subtle">Last changed</dt>
+                <dd>
+                  {formatDateTime(strategy.updatedAt)}
+                  {strategy.updatedBy ? ` by ${strategy.updatedBy}` : ''}
+                </dd>
+              </dl>
+              <p className="mt-3 text-xs text-ink-subtle">
+                Not sure about a change? Save it, check it on the <strong>Try it</strong> tab, and
+                go back from <strong>History</strong> if needed.
+              </p>
+            </Section>
+          </aside>
         </div>
       </Form>
     </form>
   );
 }
 
-/* --------------------------- test console --------------------------- */
+/* --------------------------------- Try it --------------------------------- */
 
-const TestSchema = z.object({
+const TryItSchema = z.object({
   subject: z.string().trim().min(3, 'At least 3 characters').max(150),
   description: z.string().trim().min(10, 'At least 10 characters').max(5000),
   bookId: z.string().trim().max(40),
 });
-type TestValues = z.infer<typeof TestSchema>;
+type TryItValues = z.infer<typeof TryItSchema>;
 
-const SAMPLE: Record<string, TestValues> = {
+const EXAMPLES: Record<string, TryItValues> = {
   ROYALTY_PAYMENTS: {
     subject: 'No royalty received yet',
     description:
@@ -553,14 +710,14 @@ const SAMPLE: Record<string, TestValues> = {
   },
 };
 
-function TestConsole({ strategy }: { strategy: AiStrategyDto }) {
+function TryIt({ strategy }: { strategy: AiStrategyDto }) {
   const [result, setResult] = useState<StrategyTestResultDto | null>(null);
-  const { control, handleSubmit } = useForm<TestValues>({
-    resolver: zodResolver(TestSchema),
-    defaultValues: SAMPLE[strategy.category ?? 'ROYALTY_PAYMENTS'],
+  const { control, handleSubmit } = useForm<TryItValues>({
+    resolver: zodResolver(TryItSchema),
+    defaultValues: EXAMPLES[strategy.category ?? 'ROYALTY_PAYMENTS'],
   });
   const run = useMutation({
-    mutationFn: ({ values, dryRun }: { values: TestValues; dryRun: boolean }) =>
+    mutationFn: ({ values, dryRun }: { values: TryItValues; dryRun: boolean }) =>
       endpoints.ai.test(strategy.id, {
         subject: values.subject,
         description: values.description,
@@ -569,59 +726,52 @@ function TestConsole({ strategy }: { strategy: AiStrategyDto }) {
       }),
     onSuccess: setResult,
   });
+  const id = (field: string) => `${strategy.id}-try-${field}`;
+  const out = result?.output;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[380px_1fr]">
-      <Section title="Sample ticket">
+    <div className="grid gap-6 xl:grid-cols-[400px_1fr]">
+      <Section title="An example question from an author">
         <Form layout="vertical" component={false}>
-          {(['subject', 'description', 'bookId'] as const).map((name) => (
+          {(
+            [
+              ['subject', 'Subject'],
+              ['description', 'Message'],
+              ['bookId', 'Book code (optional) — e.g. BK001, adds the book’s real details'],
+            ] as const
+          ).map(([name, label]) => (
             <Controller
               key={name}
               name={name}
               control={control}
               render={({ field, fieldState }) => (
                 <Form.Item
-                  htmlFor={`${strategy.id}-${field.name}`}
-                  label={
-                    name === 'bookId'
-                      ? 'Book ID (optional, e.g. BK001)'
-                      : name === 'subject'
-                        ? 'Subject'
-                        : 'Description'
-                  }
+                  htmlFor={id(name)}
+                  label={label}
                   help={<FieldError message={fieldState.error?.message} />}
                 >
                   {name === 'description' ? (
-                    <Input.TextArea {...field} id={`${strategy.id}-${field.name}`} rows={6} />
+                    <Input.TextArea {...field} id={id(name)} rows={6} />
                   ) : (
-                    <Input {...field} id={`${strategy.id}-${field.name}`} />
+                    <Input {...field} id={id(name)} />
                   )}
                 </Form.Item>
               )}
             />
           ))}
         </Form>
-        <p className="mb-3 text-xs text-ink-muted">
-          Tests run the active version (v{strategy.activeVersion}). Save your edits first to test
-          them.
+        <Button
+          type="primary"
+          icon={<ExperimentOutlined />}
+          loading={run.isPending && !run.variables?.dryRun}
+          onClick={handleSubmit((values) => run.mutate({ values, dryRun: false }))}
+        >
+          See what AI would do
+        </Button>
+        <p className="mt-2 text-xs text-ink-muted">
+          This is only a test — nothing is sent to any author and no ticket is changed. It uses the
+          saved version of this setting, so save your changes first.
         </p>
-        <div className="flex gap-2">
-          <Button
-            icon={<EyeOutlined />}
-            loading={run.isPending && run.variables?.dryRun}
-            onClick={handleSubmit((values) => run.mutate({ values, dryRun: true }))}
-          >
-            Preview prompt
-          </Button>
-          <Button
-            type="primary"
-            icon={<ExperimentOutlined />}
-            loading={run.isPending && !run.variables?.dryRun}
-            onClick={handleSubmit((values) => run.mutate({ values, dryRun: false }))}
-          >
-            Run test
-          </Button>
-        </div>
       </Section>
 
       <div className="flex flex-col gap-4">
@@ -629,139 +779,123 @@ function TestConsole({ strategy }: { strategy: AiStrategyDto }) {
         {!result ? (
           <Section>
             <p className="text-sm text-ink-muted">
-              Preview shows the exact system and user prompt (with only the relevant knowledge-base
-              sections). Run test calls the model and shows the structured output — nothing is
-              written to tickets.
+              Write or keep the example on the left, then click{' '}
+              <strong>See what AI would do</strong>.
             </p>
           </Section>
         ) : (
           <>
             {result.failure ? (
               <Alert
-                type="warning"
+                type="info"
                 showIcon
-                title={`${result.failure.kind}: ${result.failure.message}`}
+                title={
+                  out?.kind === 'TRIAGE'
+                    ? `${AI_PROBLEM[result.failure.kind]} — this is what automatic sorting would do instead.`
+                    : `${AI_PROBLEM[result.failure.kind]}, so it can't write a draft right now.`
+                }
               />
             ) : null}
-            {result.output?.kind === 'DRAFT' ? (
-              <Section
-                title="Draft output"
-                extra={
-                  <span className="text-xs text-ink-subtle">
-                    {result.model} · {result.latencyMs} ms · {result.usage?.inputTokens ?? '?'} in /{' '}
-                    {result.usage?.outputTokens ?? '?'} out
-                  </span>
-                }
-              >
-                <p className="prose-message rounded-lg border border-brand-100 bg-brand-50/60 p-4 text-sm">
-                  {result.output.draft.body}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <Tag>Suggests: {result.output.draft.suggestedStatus}</Tag>
-                  {result.output.draft.escalationRecommended ? (
-                    <Tag color="red">Escalate</Tag>
-                  ) : null}
-                  {result.output.draft.knowledgeSectionsUsed.map((k) => (
-                    <Tag key={k} color="blue">
-                      {k}
-                    </Tag>
-                  ))}
-                </div>
-                {result.output.draft.verificationChecklist.length ? (
-                  <ul className="mt-3 list-disc pl-5 text-sm text-warning">
-                    {result.output.draft.verificationChecklist.map((v) => (
-                      <li key={v}>{v}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </Section>
-            ) : null}
-            {result.output?.kind === 'TRIAGE' ? (
-              <Section
-                title="Triage output"
-                extra={
-                  result.model ? (
-                    <span className="text-xs text-ink-subtle">
-                      {result.model} · {result.latencyMs} ms
-                    </span>
-                  ) : (
-                    <Tag>Rules fallback</Tag>
-                  )
-                }
-              >
-                <dl className="grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+
+            {out?.kind === 'TRIAGE' ? (
+              <Section title="What would happen">
+                <dl className="grid grid-cols-[120px_1fr] gap-y-3 text-sm">
                   <dt className="text-ink-muted">Category</dt>
+                  <dd className="font-medium">{TICKET_CATEGORY_LABELS[out.triage.category]}</dd>
+                  <dt className="text-ink-muted">Urgency</dt>
                   <dd>
-                    {TICKET_CATEGORY_LABELS[result.output.triage.category]} (
-                    {Math.round(result.output.triage.categoryConfidence * 100)}%)
+                    <PriorityTag priority={out.triage.priority} />
                   </dd>
-                  <dt className="text-ink-muted">Priority</dt>
-                  <dd>
-                    <PriorityTag priority={result.output.triage.priority} />
-                  </dd>
-                  <dt className="text-ink-muted">Rationale</dt>
-                  <dd>{result.output.triage.rationale}</dd>
-                  <dt className="text-ink-muted">Priority reason</dt>
-                  <dd>{result.output.triage.priorityRationale}</dd>
-                  {result.output.triage.rulesApplied.length ? (
+                  {!result.failure ? (
                     <>
-                      <dt className="text-ink-muted">Rules applied</dt>
-                      <dd>{result.output.triage.rulesApplied.join('; ')}</dd>
+                      <dt className="text-ink-muted">Why</dt>
+                      <dd>{out.triage.rationale}</dd>
                     </>
                   ) : null}
                 </dl>
               </Section>
             ) : null}
-            <Section
-              title="Prompt composition"
-              extra={
-                <span className="text-xs text-ink-subtle">
-                  ≈ {result.preview.estimatedInputTokens} input tokens
-                </span>
-              }
-            >
-              {result.preview.knowledgeSections.length ? (
-                <p className="mb-2 text-xs text-ink-muted">
-                  Knowledge sections included: {result.preview.knowledgeSections.join(', ')}
+
+            {out?.kind === 'DRAFT' ? (
+              <Section title="The draft reply AI would suggest">
+                <p className="prose-message rounded-lg border border-brand-100 bg-brand-50/60 p-4 text-sm">
+                  {out.draft.body}
                 </p>
-              ) : null}
-              <Collapse
-                size="small"
-                items={[
-                  {
-                    key: 'system',
-                    label: 'System prompt',
-                    children: (
-                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">
-                        {result.preview.system}
-                      </pre>
-                    ),
-                  },
-                  {
-                    key: 'prompt',
-                    label: 'User prompt (ticket context)',
-                    children: (
-                      <pre className="max-h-96 overflow-auto whitespace-pre-wrap text-xs">
-                        {result.preview.prompt}
-                      </pre>
-                    ),
-                  },
-                ]}
-                defaultActiveKey={['prompt']}
-              />
-            </Section>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {out.draft.escalationRecommended ? (
+                    <Tag color="red">Needs a specialist team</Tag>
+                  ) : null}
+                  {out.draft.suggestedStatus === 'RESOLVED' ? (
+                    <Tag color="green">Answers the question fully</Tag>
+                  ) : null}
+                </div>
+                {out.draft.verificationChecklist.length ? (
+                  <div className="mt-3 rounded-lg border border-note-border bg-note p-3 text-sm">
+                    <p className="mb-1 font-semibold text-warning">
+                      Your team would check before sending
+                    </p>
+                    <ul className="list-disc pl-5">
+                      {out.draft.verificationChecklist.map((v) => (
+                        <li key={v}>{v}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </Section>
+            ) : null}
           </>
         )}
+
+        <Collapse
+          items={[
+            {
+              key: 'tech',
+              label: 'Technical details — for technical admins',
+              children: (
+                <div className="flex flex-col gap-3 text-sm">
+                  <Button
+                    className="self-start"
+                    loading={run.isPending && run.variables?.dryRun}
+                    onClick={handleSubmit((values) => run.mutate({ values, dryRun: true }))}
+                  >
+                    Show what would be sent to AI (without asking AI)
+                  </Button>
+                  {result ? (
+                    <>
+                      <p className="text-xs text-ink-muted">
+                        {result.model ? `Model ${result.model} · ` : ''}
+                        {result.latencyMs
+                          ? `${(result.latencyMs / 1000).toFixed(1)} s · `
+                          : ''}≈ {result.preview.estimatedInputTokens} input tokens
+                        {result.preview.knowledgeSections.length
+                          ? ` · policies: ${result.preview.knowledgeSections.join(', ')}`
+                          : ''}
+                      </p>
+                      <p className="font-medium">Instructions (system prompt)</p>
+                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-surface-muted p-3 text-xs">
+                        {result.preview.system}
+                      </pre>
+                      <p className="font-medium">Ticket details sent</p>
+                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-surface-muted p-3 text-xs">
+                        {result.preview.prompt}
+                      </pre>
+                    </>
+                  ) : null}
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </div>
   );
 }
 
-/* ----------------------------- versions ----------------------------- */
+/* --------------------------------- History --------------------------------- */
 
-function VersionHistory({ strategy }: { strategy: AiStrategyDto }) {
+function History({ strategy }: { strategy: AiStrategyDto }) {
   const queryClient = useQueryClient();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const versions = useQuery({
     queryKey: queryKeys.ai.versions(strategy.id),
     queryFn: () => endpoints.ai.versions(strategy.id),
@@ -771,68 +905,85 @@ function VersionHistory({ strategy }: { strategy: AiStrategyDto }) {
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKeys.ai.strategy(strategy.id), updated);
       void queryClient.invalidateQueries({ queryKey: queryKeys.ai.all });
-      message.success(`Version ${updated.activeVersion} is now active`);
+      message.success('Done — AI now uses that version.');
     },
     onError: (err) => message.error(errorMessage(err)),
   });
   if (versions.isPending) return <LoadingBlock />;
   if (versions.isError) return <ErrorState error={versions.error} />;
   return (
-    <div className="surface-card overflow-hidden">
-      <Table<AiStrategyVersionDto>
-        rowKey="version"
-        dataSource={versions.data}
-        pagination={false}
-        columns={[
-          {
-            title: 'Version',
-            key: 'v',
-            width: 120,
-            render: (_, v) => (
-              <span>
-                v{v.version} {v.isActive ? <Tag color="green">Active</Tag> : null}
-              </span>
-            ),
-          },
-          {
-            title: 'Change note',
-            dataIndex: 'changeNote',
-            render: (n: string) => n || <span className="text-ink-subtle">—</span>,
-          },
-          {
-            title: 'Author',
-            dataIndex: 'createdBy',
-            width: 160,
-            render: (v: string | null) => v ?? 'System',
-          },
-          {
-            title: 'Created',
-            dataIndex: 'createdAt',
-            width: 180,
-            render: (v: string) => formatDateTime(v),
-          },
-          {
-            title: '',
-            key: 'action',
-            width: 140,
-            render: (_, v) =>
-              v.isActive ? null : (
-                <Button
-                  size="small"
-                  loading={activate.isPending && activate.variables === v.version}
-                  onClick={() => activate.mutate(v.version)}
-                >
-                  {v.version < strategy.activeVersion ? 'Roll back to this' : 'Activate'}
-                </Button>
+    <div className="max-w-4xl">
+      <p className="mb-3 text-sm text-ink-muted">
+        Every time someone saves this setting, the previous version is kept here. Use an older
+        version to undo a change.
+      </p>
+      <div className="surface-card overflow-hidden">
+        <Table<AiStrategyVersionDto>
+          rowKey="version"
+          dataSource={versions.data}
+          pagination={false}
+          scroll={{ x: 'max-content' }}
+          columns={[
+            {
+              title: 'Saved',
+              key: 'when',
+              width: 190,
+              render: (_, v) => (
+                <span>
+                  {formatDateTime(v.createdAt)}
+                  {v.isActive ? (
+                    <Tag color="green" className="!ml-2">
+                      In use
+                    </Tag>
+                  ) : null}
+                </span>
               ),
-          },
-        ]}
-      />
+            },
+            {
+              title: 'What changed',
+              dataIndex: 'changeNote',
+              render: (n: string) =>
+                n === 'Built-in default'
+                  ? 'BookLeaf’s original setting'
+                  : n || <span className="text-ink-subtle">—</span>,
+            },
+            {
+              title: 'By',
+              dataIndex: 'createdBy',
+              width: 160,
+              render: (v: string | null) => v ?? 'BookLeaf',
+            },
+            {
+              title: '',
+              key: 'action',
+              width: 170,
+              render: (_, v) =>
+                v.isActive ? null : (
+                  <Button
+                    size="small"
+                    loading={activate.isPending && activate.variables === v.version}
+                    onClick={() =>
+                      modal.confirm({
+                        title: 'Use this version again?',
+                        content:
+                          'AI will use this version for new tickets from now on. You can switch back at any time.',
+                        okText: 'Use this version',
+                        onOk: () => activate.mutateAsync(v.version),
+                      })
+                    }
+                  >
+                    Use this version
+                  </Button>
+                ),
+            },
+          ]}
+        />
+      </div>
     </div>
   );
 }
 
-/* ------------------------------- view -------------------------------- */
+/* ---------------------------------- view ---------------------------------- */
 
 export function StrategyDetailView({ strategyId, tabId }: { strategyId: string; tabId: string }) {
   const setTitle = useWorkspace((s) => s.setTitle);
@@ -856,33 +1007,40 @@ export function StrategyDetailView({ strategyId, tabId }: { strategyId: string; 
         title={s.name}
         description={
           <span className="flex flex-wrap items-center gap-2">
-            <Tag>{AI_STRATEGY_KIND_LABELS[s.kind]}</Tag>
-            <span>{s.category ? TICKET_CATEGORY_LABELS[s.category] : 'All tickets'}</span>
+            <span>{SETTING_KIND[s.kind].label}</span>
             <span>·</span>
-            <span>Active v{s.activeVersion}</span>
-            {s.enabled ? <Tag color="green">Enabled</Tag> : <Tag>Disabled</Tag>}
-            <span className="text-xs text-ink-subtle">
-              {s.stats.runs} runs · {s.stats.failures} failures
-              {s.stats.lastRunAt ? ` · last ${formatDateTime(s.stats.lastRunAt)}` : ''}
-            </span>
+            <span>{s.category ? TICKET_CATEGORY_LABELS[s.category] : 'All tickets'}</span>
+            {s.enabled ? <Tag color="green">In use</Tag> : <Tag>Not in use</Tag>}
           </span>
         }
       />
       <Tabs
         items={[
-          // Keyed by active version so the form re-initialises after activating another version.
           {
-            key: 'config',
-            label: 'Configuration',
+            key: 'settings',
+            label: 'Settings',
+            // Keyed by version so the form refreshes after "Use this version".
             children: (
-              <StrategyEditor key={`${s.id}-${s.activeVersion}`} strategy={s} tabId={tabId} />
+              <SettingEditor key={`${s.id}-${s.activeVersion}`} strategy={s} tabId={tabId} />
             ),
           },
-          { key: 'test', label: 'Preview & test', children: <TestConsole strategy={s} /> },
           {
-            key: 'versions',
-            label: `Versions (${s.latestVersion})`,
-            children: <VersionHistory strategy={s} />,
+            key: 'try',
+            label: (
+              <span className="flex items-center gap-1.5">
+                <ExperimentOutlined /> Try it
+              </span>
+            ),
+            children: <TryIt strategy={s} />,
+          },
+          {
+            key: 'history',
+            label: (
+              <span className="flex items-center gap-1.5">
+                <HistoryOutlined /> History
+              </span>
+            ),
+            children: <History strategy={s} />,
           },
         ]}
       />

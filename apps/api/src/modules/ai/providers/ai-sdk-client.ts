@@ -67,9 +67,27 @@ export class AiSdkLlmClient implements LlmClient {
     return this.breaker.openUntilDate();
   }
 
+  /**
+   * A strategy may pin a model id. It's only honoured when the strategy targets the
+   * configured provider — e.g. a Claude model id is never sent to OpenAI after switching
+   * providers; the server default for the task is used instead.
+   */
+  private resolveModel(request: StructuredRequest<unknown>): string {
+    const pinned = request.model?.trim();
+    if (!pinned) return this.defaultModel(request.task);
+    if (request.provider && request.provider !== this.provider) {
+      this.options.logger.warn(
+        { pinned, strategyProvider: request.provider, provider: this.provider },
+        'Strategy model belongs to another provider — using the server default model',
+      );
+      return this.defaultModel(request.task);
+    }
+    return pinned;
+  }
+
   async generateStructured<T>(request: StructuredRequest<T>): Promise<StructuredResult<T>> {
     this.breaker.assertClosed();
-    const modelId = request.model?.trim() || this.defaultModel(request.task);
+    const modelId = this.resolveModel(request);
     const started = Date.now();
 
     try {
@@ -85,9 +103,10 @@ export class AiSdkLlmClient implements LlmClient {
           : {}),
         maxRetries: this.options.maxRetries,
         timeout: this.options.timeouts[request.task],
+        // Each provider reads only its own key. Triage is a short classification → low
+        // effort keeps it fast and cheap; drafting gets a bit more reasoning, still bounded.
         providerOptions: {
-          // Triage is a short classification → low effort keeps it fast and cheap.
-          // Drafting benefits from a bit more reasoning, still bounded.
+          openai: { reasoningEffort: request.task === 'triage' ? 'low' : 'medium' },
           anthropic: { effort: request.task === 'triage' ? 'low' : 'medium' },
         },
       });

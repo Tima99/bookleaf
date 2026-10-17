@@ -9,7 +9,7 @@ BookLeaf's knowledge base** — with graceful fallbacks when AI is unavailable.
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Frontend | Next.js 16 (App Router, UI only) · React 19 · TypeScript · Ant Design 6 · Tailwind CSS 4 · Framer Motion · TanStack Query · React Hook Form + Zod · Zustand |
 | Backend  | Node.js 24 · Express 5 · TypeScript · MongoDB + Mongoose 9 · Zod · JWT (HTTP-only cookie) + CSRF · Pino · SSE                                               |
-| AI       | Vercel AI SDK 7 (`@ai-sdk/anthropic`, `@ai-sdk/openai`) · structured outputs validated with Zod                                                             |
+| AI       | Vercel AI SDK 7 (`@ai-sdk/openai` default — GPT-6 Luna / GPT-6.1 Sol; `@ai-sdk/anthropic` supported) · structured outputs validated with Zod                |
 | Tooling  | pnpm 12 workspaces · Turborepo · Vitest · Supertest · mongodb-memory-server · ESLint · Prettier                                                             |
 
 **Docs:** [Architecture](docs/ARCHITECTURE.md) · [Database](docs/DATABASE.md) ·
@@ -29,7 +29,8 @@ BookLeaf's knowledge base** — with graceful fallbacks when AI is unavailable.
 - My Books: searchable, filterable, paginated; books in production show "Available once
   published" instead of fake zeros; detail drawer.
 - Raise a query: book selector incl. "General / Account level", validated subject and
-  description, contextual policy tips, attachment UI (clearly marked as not uploaded).
+  description, production-stage notice from the book's real status, attachment UI (clearly
+  marked as not uploaded).
 - My Tickets: status filter + search, conversation thread, reply / re-open, **live updates
   via SSE** with automatic polling fallback.
 
@@ -41,12 +42,13 @@ BookLeaf's knowledge base** — with graceful fallbacks when AI is unavailable.
   range), urgency-first sort, overdue (>48h) and priority highlighting; filters persist.
 - **Tabbed workspace**: tickets, authors and strategies open as tabs; no duplicates; tabs
   stay mounted so unsaved replies survive switching; unsaved-changes guard; refresh restores.
-- Ticket workspace: AI triage with provenance (AI / Rules / Admin) and override, re-run,
-  AI-drafted reply (editable, verification checklist, regenerate), send / send & resolve,
+- Ticket workspace: plain-language "Category & priority" (AI / Auto / Edited badges, change
+  either, "Ask AI again"), AI-drafted reply (editable, check-before-sending list, new
+  draft on request), send / send & resolve,
   internal notes (never visible to authors), assignment, status lifecycle, audit timeline.
 - Author directory with books, royalties and tickets per author.
 - **Column chooser** on every data table (show/hide columns from a dropdown, remembered per viewer).
-- **AI strategies**: versioned per-category strategies for classification, priority scoring
+- **AI settings** (internally "AI strategies"): versioned per-category strategies for classification, priority scoring
   and drafting — edit, duplicate, enable/disable, preview the composed prompt, test on a
   sample ticket, roll back; run log with latency, tokens and failures; knowledge-base viewer.
 
@@ -57,7 +59,7 @@ BookLeaf's knowledge base** — with graceful fallbacks when AI is unavailable.
 - **Node.js 24 LTS** (`.nvmrc` → `nvm use`)
 - **pnpm 12** (`npm i -g pnpm@12.11.2` or `corepack enable`)
 - **MongoDB 7+** running locally (or a MongoDB Atlas URI)
-- Optional: an Anthropic (or OpenAI) API key — without one the app runs in **manual mode**
+- Optional: an OpenAI (or Anthropic) API key — without one the app runs in **manual mode**
 
 ## Monorepo layout
 
@@ -80,7 +82,7 @@ nvm use                       # Node 24
 pnpm install
 
 # 1. Environment
-cp apps/api/.env.example apps/api/.env       # set JWT_SECRET; optionally ANTHROPIC_API_KEY
+cp apps/api/.env.example apps/api/.env       # set JWT_SECRET; optionally OPENAI_API_KEY
 cp apps/web/.env.example apps/web/.env.local # NEXT_PUBLIC_API_URL=http://localhost:4000
 
 # 2. Database (any MongoDB works; this starts a local one)
@@ -127,9 +129,10 @@ The login page shows one-click demo shortcuts when `NEXT_PUBLIC_DEMO_MODE=true`.
 Set in `apps/api/.env` (server-side only):
 
 ```bash
-AI_PROVIDER=anthropic            # or openai | none
-ANTHROPIC_API_KEY=sk-ant-...     # empty → manual mode
-# AI_TRIAGE_MODEL=claude-haiku-5-5   AI_DRAFT_MODEL=claude-opus-5-5 (defaults)
+AI_PROVIDER=openai               # default; or anthropic | none
+OPENAI_API_KEY=sk-...            # empty → manual mode
+# defaults: AI_TRIAGE_MODEL=gpt-6-luna  AI_DRAFT_MODEL=gpt-6.1-sol
+# (Anthropic: AI_PROVIDER=anthropic + ANTHROPIC_API_KEY → claude-haiku-5-5 / claude-opus-5-5)
 ```
 
 - Triage (category + priority) runs in the background after each ticket is created.

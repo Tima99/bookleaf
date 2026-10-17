@@ -6,22 +6,37 @@ is designed to keep working when AI is slow, wrong, expensive or unavailable.
 
 ## 1. Provider and model choice
 
-| Task                                   | Default model      | Why                                                                                                                                                                                        |
-| -------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Triage (category + priority, one call) | `claude-haiku-5-5` | Short structured output on every new ticket → the small, fast, inexpensive model is the right fit (the brief itself suggests Claude Haiku for this use case). Effort `low`.                |
-| Reply drafting                         | `claude-opus-5-5`  | Author-facing prose that must follow policy precisely and avoid invented facts. Volume is low (admin-triggered, cached), so quality per call matters more than unit cost. Effort `medium`. |
+**Default provider: OpenAI** (`AI_PROVIDER=openai`). Anthropic remains a drop-in
+alternative (`AI_PROVIDER=anthropic`) — the services only depend on the `LlmClient`
+interface, so switching providers is configuration, not code.
+
+| Task                                   | Default model | Price (in / out per 1M tokens) | Why                                                                                                                                                                                                                              |
+| -------------------------------------- | ------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Triage (category + priority, one call) | `gpt-6-luna`  | $0.10 / $0.50                  | Runs on every new ticket and returns a short structured result → OpenAI's small model for high-volume tasks. Reasoning effort `low`.                                                                                             |
+| Reply drafting                         | `gpt-6.1-sol` | $2 / $10                       | Author-facing prose that must follow policy precisely and avoid invented facts. "Near-flagship" quality at a fifth of `gpt-6-astra`'s price; drafts are admin-triggered and cached, so volume is low. Reasoning effort `medium`. |
 
 - Both are overridable per strategy (admin UI) and globally via `AI_TRIAGE_MODEL` /
-  `AI_DRAFT_MODEL`. Setting `AI_PROVIDER=openai` switches to `gpt-4o-mini` defaults.
-- **Why Anthropic**: strong instruction-following on policy-constrained writing,
-  native structured outputs on current Claude models, and an explicit "say when you
-  don't know" behaviour that suits a "never fabricate payout dates" requirement.
+  `AI_DRAFT_MODEL`. A strategy that pins a model for a _different_ provider is ignored
+  safely (the server default is used and a warning is logged), so switching providers never
+  sends e.g. a Claude model id to OpenAI.
+- **Why OpenAI**: one platform for both tiers with a clear small → mid → flagship ladder;
+  the triage tier costs the same as the Claude Haiku tier while the drafting tier
+  (`gpt-6.1-sol`, $2/$10) is half the price of Claude Opus 5.5 ($4/$20); strict
+  JSON-schema structured outputs; and teams commonly already hold an OpenAI key.
+- **Anthropic alternative** (`claude-haiku-5-5` / `claude-opus-5-5`): equally supported;
+  a strong choice for policy-constrained writing. Pick per team preference/contract.
 - **Why the Vercel AI SDK (v7)**: one provider-agnostic API (`generateText` +
   `Output.object(zodSchema)`), built-in retries/timeouts, typed errors
-  (`APICallError`, `RetryError`, `NoObjectGeneratedError`) and Zod-validated structured
-  output. `@ai-sdk/anthropic` uses Anthropic's native `output_config.format` on current
-  models (which reject forced tool use), and drops sampling parameters for models that
-  don't accept them.
+  (`APICallError`, `RetryError`, `NoObjectGeneratedError`) and schema-validated output.
+  `@ai-sdk/openai` uses the Responses API with **strict** JSON-schema structured outputs;
+  `@ai-sdk/anthropic` uses Anthropic's native `output_config.format`. Both drop sampling
+  parameters for models that don't accept them.
+- **Strict-mode-safe schemas**: strict structured-output modes accept only a subset of
+  JSON Schema (e.g. no string length limits). The model therefore receives a _model-facing_
+  schema (types, enums, numeric bounds, `maxItems`; limits stated in descriptions), and the
+  service normalises the result (trim, clamp, cap lists) and validates it against the full
+  application schema. Unusable output is treated as `INVALID_OUTPUT` → rules/template
+  fallback.
 
 ## 2. Architecture
 
@@ -30,7 +45,7 @@ TriageService / ResponseDraftService / StrategyTestService
         │  (business logic, fallbacks, persistence, audit, events)
         ▼
 LlmClient interface  ── generateStructured({ task, schema, system, prompt, model, … })
-        ├── AiSdkLlmClient   (Anthropic / OpenAI via AI SDK, circuit breaker, error normalisation)
+        ├── AiSdkLlmClient   (OpenAI / Anthropic via AI SDK, circuit breaker, error normalisation)
         ├── DisabledLlmClient (no key → NOT_CONFIGURED, instant)
         └── FakeLlm          (tests)
 ```

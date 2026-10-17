@@ -1,4 +1,5 @@
 import { APICallError } from 'ai';
+import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { AiStrategyConfigSchema } from '@bookleaf/contracts';
 import { selectKnowledgeSections } from '../src/modules/knowledge-base/retrieval';
@@ -12,6 +13,13 @@ import { evaluateFloorRules } from '../src/modules/ai/rules/priority-rules';
 import { buildDefaultStrategies } from '../src/modules/ai/strategies/defaults';
 import type { ResolvedStrategy } from '../src/modules/ai/prompts/types';
 import { AiError } from '../src/common/errors';
+import { loadConfig } from '../src/config/env';
+import {
+  DraftModelOutputSchema,
+  toDraftOutput,
+  toTriageOutput,
+  TriageModelOutputSchema,
+} from '../src/modules/ai/schemas/output.schemas';
 
 const defaults = buildDefaultStrategies();
 const resolved = (key: string): ResolvedStrategy => {
@@ -172,5 +180,74 @@ describe('AI error handling', () => {
     expect(() => breaker.assertClosed()).toThrowError(AiError);
     now = 10_001;
     expect(() => breaker.assertClosed()).not.toThrow();
+  });
+});
+
+describe('OpenAI as the default provider', () => {
+  it('defaults to OpenAI with GPT-6 Luna (triage) and GPT-6.1 Sol (drafts) when a key is set', () => {
+    const config = loadConfig({ NODE_ENV: 'test', OPENAI_API_KEY: 'sk-test' });
+    expect(config.ai).toMatchObject({
+      provider: 'openai',
+      triageModel: 'gpt-6-luna',
+      draftModel: 'gpt-6.1-sol',
+    });
+  });
+
+  it('runs in manual mode (no provider) when no key is configured', () => {
+    expect(loadConfig({ NODE_ENV: 'test' }).ai.provider).toBeNull();
+  });
+
+  it('still supports Anthropic when selected explicitly', () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      AI_PROVIDER: 'anthropic',
+      ANTHROPIC_API_KEY: 'k',
+    });
+    expect(config.ai).toMatchObject({ provider: 'anthropic', triageModel: 'claude-haiku-5-5' });
+  });
+});
+
+describe('model-facing structured-output schemas', () => {
+  it('use no string-length keywords (rejected by strict JSON-schema modes)', () => {
+    for (const schema of [TriageModelOutputSchema, DraftModelOutputSchema]) {
+      const json = JSON.stringify(z.toJSONSchema(schema));
+      expect(json).not.toMatch(/"(minLength|maxLength)"/);
+    }
+  });
+
+  it('normalises model output before validating it', () => {
+    const triage = toTriageOutput({
+      category: 'ISBN_METADATA',
+      categoryConfidence: 0.9,
+      priority: 'HIGH',
+      rationale: 'x'.repeat(900),
+      priorityRationale: '  ISBN errors are high priority.  ',
+      escalate: true,
+    });
+    expect(triage.rationale.length).toBeLessThanOrEqual(400);
+    expect(triage.priorityRationale).toBe('ISBN errors are high priority.');
+
+    const draft = toDraftOutput({
+      reply: '  Dear Asha, thank you for reaching out about your royalty payment.  ',
+      verificationChecklist: ['ok', 'Confirm bank details are linked', 'y'.repeat(500)],
+      suggestedStatus: 'IN_PROGRESS',
+      escalationRecommended: false,
+      knowledgeSectionsUsed: ['royalty-policy', 'royalty-policy'],
+    });
+    expect(draft.verificationChecklist).toHaveLength(2);
+    expect(draft.verificationChecklist[1]?.length).toBeLessThanOrEqual(200);
+    expect(draft.knowledgeSectionsUsed).toEqual(['royalty-policy']);
+  });
+
+  it('rejects unusable output (too-short reply) so the fallback is used', () => {
+    expect(() =>
+      toDraftOutput({
+        reply: 'Hi',
+        verificationChecklist: [],
+        suggestedStatus: 'RESOLVED',
+        escalationRecommended: false,
+        knowledgeSectionsUsed: [],
+      }),
+    ).toThrow();
   });
 });

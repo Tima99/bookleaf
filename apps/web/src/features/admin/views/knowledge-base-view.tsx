@@ -17,7 +17,7 @@ export function KnowledgeBaseView() {
     <div>
       <PageHeader
         title="Knowledge base"
-        description="BookLeaf policies used to ground AI drafts. Only the 1–3 sections relevant to a ticket are sent with each request."
+        description="BookLeaf's policies that AI follows when it writes draft replies. They are not used to choose a ticket's category or priority."
       />
       {kb.isPending ? (
         <LoadingBlock rows={8} />
@@ -26,13 +26,8 @@ export function KnowledgeBaseView() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {kb.data.map((s) => (
-            <Section
-              key={s.id}
-              title={s.title}
-              extra={<span className="text-xs text-ink-subtle">~{s.approxTokens} tokens</span>}
-            >
+            <Section key={s.id} title={s.title}>
               <div className="mb-3 flex flex-wrap gap-1">
-                <Tag className="!font-mono">{s.id}</Tag>
                 {s.categories.length ? (
                   s.categories.map((c) => (
                     <Tag key={c} color="blue">
@@ -40,7 +35,7 @@ export function KnowledgeBaseView() {
                     </Tag>
                   ))
                 ) : (
-                  <Tag>System prompt (always)</Tag>
+                  <Tag>Used for every reply</Tag>
                 )}
               </div>
               <p className="prose-message text-[13px] text-ink-muted">{s.content}</p>

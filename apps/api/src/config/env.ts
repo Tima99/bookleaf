@@ -30,7 +30,7 @@ const EnvSchema = z
     COOKIE_DOMAIN: z.string().optional(),
     TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
 
-    AI_PROVIDER: z.enum(['anthropic', 'openai', 'none']).default('anthropic'),
+    AI_PROVIDER: z.enum(['openai', 'anthropic', 'none']).default('openai'),
     ANTHROPIC_API_KEY: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
     AI_TRIAGE_MODEL: z.string().optional(),
@@ -80,13 +80,17 @@ export interface AppConfig {
 }
 
 /**
- * Default models. Triage (classification + priority) is a high-volume, short structured
- * task → the small, inexpensive model. Drafting is author-facing prose that an admin
- * reviews → the most capable model. Both are overridable per strategy and via env.
+ * Default models (OpenAI is the default provider).
+ * - Triage (classification + priority) runs on every ticket: short structured output →
+ *   GPT-6 Luna, OpenAI's small model for high-volume tasks ($0.10 / $0.50 per 1M tokens).
+ * - Drafting is author-facing prose an admin reviews → GPT-6.1 Sol, near-flagship quality
+ *   at a fifth of GPT-6 Astra's price ($2 / $10 per 1M tokens).
+ * Anthropic remains supported (AI_PROVIDER=anthropic). Both are overridable via env and
+ * per strategy.
  */
 const DEFAULT_MODELS = {
+  openai: { triage: 'gpt-6-luna', draft: 'gpt-6.1-sol' },
   anthropic: { triage: 'claude-haiku-5-5', draft: 'claude-opus-5-5' },
-  openai: { triage: 'gpt-4o-mini', draft: 'gpt-4o-mini' },
 } as const;
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -129,8 +133,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     ai: {
       provider: apiKey ? provider : null,
       apiKey,
-      triageModel: env.AI_TRIAGE_MODEL ?? DEFAULT_MODELS[provider ?? 'anthropic'].triage,
-      draftModel: env.AI_DRAFT_MODEL ?? DEFAULT_MODELS[provider ?? 'anthropic'].draft,
+      triageModel: env.AI_TRIAGE_MODEL ?? DEFAULT_MODELS[provider ?? 'openai'].triage,
+      draftModel: env.AI_DRAFT_MODEL ?? DEFAULT_MODELS[provider ?? 'openai'].draft,
       triageTimeoutMs: env.AI_TRIAGE_TIMEOUT_MS,
       draftTimeoutMs: env.AI_DRAFT_TIMEOUT_MS,
       maxRetries: env.AI_MAX_RETRIES,

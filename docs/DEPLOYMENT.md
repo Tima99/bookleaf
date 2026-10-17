@@ -25,8 +25,8 @@
 | `COOKIE_SECURE`                                                 | yes           | `true`                                                                         |
 | `COOKIE_DOMAIN`                                                 | no            | e.g. `.example.com` for sibling subdomains                                     |
 | `TRUST_PROXY`                                                   | yes on PaaS   | `1`                                                                            |
-| `AI_PROVIDER`                                                   | no            | `anthropic` (default) / `openai` / `none`                                      |
-| `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`                         | optional      | empty → manual mode                                                            |
+| `AI_PROVIDER`                                                   | no            | `openai` (default) / `anthropic` / `none`                                      |
+| `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`                         | optional      | empty → manual mode                                                            |
 | `AI_TRIAGE_MODEL`, `AI_DRAFT_MODEL`                             | no            | override defaults                                                              |
 | `AI_TRIAGE_TIMEOUT_MS`, `AI_DRAFT_TIMEOUT_MS`, `AI_MAX_RETRIES` | no            | `20000`, `60000`, `1`                                                          |
 | `LOG_LEVEL`                                                     | no            | `info`                                                                         |

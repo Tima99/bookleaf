@@ -59,8 +59,8 @@ sidebar menu with pink pill selection, pill buttons, table header and row hover,
   screens, click a row for a drawer with all fields. Null values in production books show
   "Available once published" instead of ₹0.
 - **Raise a query**: book select (incl. "General / Account level"), subject/description
-  with counters and inline Zod errors, contextual tip based on what's typed, production
-  stage notice, attachment drop-zone that clearly says files are **not** uploaded yet,
+  with counters and inline Zod errors, a production-stage notice taken from the selected
+  book's real status (no guessed advice from the typed text), attachment drop-zone that clearly says files are **not** uploaded yet,
   double-submit prevention (button state + server duplicate check).
 - **My Tickets / ticket page**: status filter + search (subject or BL-number), "Team replied"
   marker, chronological conversation with the original query first, progress steps,
@@ -124,13 +124,18 @@ Left: conversation → reply composer (AI draft pre-filled only while untouched,
 strategy / KB sources shown, verification checklist, "Restore draft", "Regenerate",
 "Send" / "Send & resolve" with confirmation that warns about unedited AI drafts and
 unchecked items) → internal notes (amber, lock icon, "never shown to the author").
-Right: AI triage (category/priority override selects with AI/Rules/Admin provenance badges,
-confidence, rationale, applied policy rules, model + strategy version, failure banner,
-re-run), author card (opens author tab), book facts, activity timeline.
+Right: "Category & priority" in plain language for non-technical staff — editable
+dropdowns with small AI / Auto / Edited badges (tooltips explain each), the AI's one-line
+reason, "AI suggested: …" only after a team member changes a value, an "AI confidence" bar with percentage whenever AI chose
+the category (amber plus a "please double-check" hint when it's low), a plain banner when AI was unavailable
+("…so it was sorted automatically from key words"), "Needs a specialist team", and
+"Ask AI again" (keeps staff changes). Technical details (model, strategy versions,
+attempts, applied rules) live in AI settings → AI activity (Technical columns), not here. Then the author card
+(opens author tab), book facts and activity timeline.
 
 ### Column chooser
 
-Every data table (ticket queue, My Books, authors, AI strategies, run log) has a
+Every data table (ticket queue, My Books, authors, AI settings, AI activity) has a
 **Columns** dropdown to show or hide columns. The primary column (Ticket / Title / Author /
 Strategy) is locked; "Show all" and "Reset" restore defaults. The queue offers extra
 Author, Book and Created columns (hidden by default because the Ticket cell already
@@ -150,3 +155,18 @@ dot marks tickets awaiting a team reply. Filters persist across tab switches and
   buttons and form controls, keyboard-openable table rows (Enter), visible focus rings.
 - Colour is never the only signal (tags have text, overdue age has an icon).
 - Body text ≥ 13–14 px, WCAG-friendly contrast for ink colours on white.
+
+## AI settings (plain-language editor)
+
+AI settings are written for support staff, not engineers. Each setting has three tabs:
+
+- **Settings** shows only plain choices for its kind:
+  - *Writing replies:* points to keep in mind, tone of voice, which company policies to follow, reply length (Short / Standard / Detailed), how much of the conversation AI reads, and whether to use BookLeaf's example answer.
+  - *Setting urgency:* when tickets are urgent (one line each), plus "always at least this urgent when the ticket mentions…" word rules.
+  - *Sorting tickets:* the same word rules for any category, plus optional extra guidance.
+
+  The underlying prompt, provider, model, temperature and exact token limit sit in a collapsed **Advanced settings — for technical admins** section. Saving applies the change straight away, with an optional "What did you change?" note.
+- **Try it** runs an example author question and shows the category, urgency and reason, or the draft reply, in plain words. Nothing is sent to authors. The prompt preview and model details are under **Technical details**.
+- **History** lists every saved version. **Use this version** undoes a change.
+
+The AI status card on the list page uses the neutral card style with a small coloured dot (green on, amber paused, grey off), not a full-colour alert.

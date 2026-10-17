@@ -100,6 +100,20 @@ describe('ticket creation and AI triage', () => {
     ctx.llm.triage = { ...ctx.llm.triage, category: 'ROYALTY_PAYMENTS', priority: 'MEDIUM' };
   });
 
+  it('treats unusable model output as INVALID_OUTPUT and falls back to rules', async () => {
+    const good = ctx.llm.triage;
+    ctx.llm.triage = { ...good, rationale: '' }; // passes the model schema, fails validation
+    const res = await createTicket(author, {
+      subject: 'Royalty statement looks wrong',
+      description: 'My royalty statement for last quarter looks wrong to me.',
+    });
+    const stored = await TicketModel.findById(res.body.data.id).lean();
+    expect(stored?.triage.status).toBe('FAILED');
+    expect(stored?.triage.failureKind).toBe('INVALID_OUTPUT');
+    expect(stored?.triage.source).toBe('RULES');
+    ctx.llm.triage = good;
+  });
+
   it('rejects a book that belongs to another author', async () => {
     const res = await author2.post('/api/v1/tickets', {
       bookId: 'TBK01',

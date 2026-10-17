@@ -109,7 +109,7 @@ export const AI_STRATEGY_KIND_LABELS: Record<AiStrategyKind, string> = {
   RESPONSE: 'Response drafting',
 };
 
-export const AI_PROVIDERS = ['anthropic', 'openai'] as const;
+export const AI_PROVIDERS = ['openai', 'anthropic'] as const;
 export const AiProviderSchema = z.enum(AI_PROVIDERS);
 export type AiProvider = z.infer<typeof AiProviderSchema>;
 

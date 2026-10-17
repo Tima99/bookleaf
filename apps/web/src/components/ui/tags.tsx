@@ -41,21 +41,21 @@ const SOURCE_META: Record<ValueSource, { label: string; className: string; tip: 
   AI: {
     label: 'AI',
     className: 'bg-brand-50 text-brand-700 border-brand-200',
-    tip: 'Set by the AI model',
+    tip: 'Suggested by AI',
   },
   RULES: {
-    label: 'Rules',
+    label: 'Auto',
     className: 'bg-surface-muted text-ink-muted border-line',
-    tip: 'Set by keyword rules (AI unavailable or not run)',
+    tip: 'Set automatically from key words in the ticket (AI was not available)',
   },
   ADMIN: {
-    label: 'Admin',
-    className: 'bg-accent-50 text-warning border-note-border',
-    tip: 'Manually set by an admin — AI will not overwrite it',
+    label: 'Edited',
+    className: 'bg-accent-50 text-accent-500 border-accent-50',
+    tip: 'Changed by a team member — AI will not change it back',
   },
 };
 
-/** Small provenance badge: who decided this value (AI, rules or an admin override). */
+/** Small badge showing who set this value: AI, automatic key-word sorting, or a team member. */
 export function SourceBadge({ source }: { source: ValueSource | null }) {
   if (!source) return null;
   const meta = SOURCE_META[source];

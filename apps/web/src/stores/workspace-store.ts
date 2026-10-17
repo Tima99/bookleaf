@@ -79,7 +79,7 @@ export const tabFor = {
   ai: (): WorkspaceTab => ({
     id: 'ai',
     kind: 'ai',
-    title: 'AI strategies',
+    title: 'AI settings',
     href: '/admin/ai',
     closable: true,
   }),
