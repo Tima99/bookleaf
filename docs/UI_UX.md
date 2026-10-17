@@ -99,6 +99,9 @@ sidebar menu with pink pill selection, pill buttons, table header and row hover,
   filters survive switching.
 - Close with × or middle-click; closing the active tab selects the right-hand neighbour,
   then the left, then the dashboard. The dashboard tab is pinned.
+- Drag a tab to reorder it (mouse or pen). The other tabs slide aside, the strip auto-scrolls
+  near its edges, and Esc cancels. Keyboard: Alt+Shift+←/→. Dashboard stays pinned first.
+  The order is kept in sessionStorage with the other tabs.
 - An amber dot marks tabs with unsaved text; closing such a tab asks for confirmation, and
   the browser warns before unloading the page.
 - URL ↔ tab sync: each tab has an `href`; refresh restores open tabs, the active tab and

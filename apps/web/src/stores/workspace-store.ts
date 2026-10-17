@@ -129,6 +129,8 @@ interface WorkspaceState {
   open: (tab: WorkspaceTab) => void;
   /** Removes a tab and returns the tab that should become active (if it was active). */
   close: (id: string) => WorkspaceTab | null;
+  /** Moves a closable tab to a new position; pinned tabs (Dashboard) always stay first. */
+  moveTab: (id: string, toIndex: number) => void;
   setTitle: (id: string, title: string) => void;
   setDirty: (id: string, dirty: boolean) => void;
   setQueueFilters: (patch: Partial<QueueFilters>) => void;
@@ -178,6 +180,19 @@ export const useWorkspace = create<WorkspaceState>()(
         });
         return next;
       },
+
+      moveTab: (id, toIndex) =>
+        set((state) => {
+          const from = state.tabs.findIndex((t) => t.id === id);
+          if (from === -1 || !state.tabs[from]?.closable) return state;
+          const pinned = state.tabs.filter((t) => !t.closable).length;
+          const to = Math.max(pinned, Math.min(toIndex, state.tabs.length - 1));
+          if (to === from) return state;
+          const tabs = [...state.tabs];
+          const [tab] = tabs.splice(from, 1);
+          tabs.splice(to, 0, tab!);
+          return { tabs };
+        }),
 
       setTitle: (id, title) =>
         set((state) => ({

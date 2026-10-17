@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useWorkspace } from '@/stores/workspace-store';
+import { useTabDrag } from './use-tab-drag';
 import { useWorkspaceNav } from './use-workspace-nav';
 
 /** Characters of a label that stay visible however crowded the strip gets. */
@@ -61,6 +62,7 @@ function useLabelWidth(scrollerRef: React.RefObject<HTMLDivElement | null>) {
  * - The scrollbar is hidden; soft shadow fades on the left/right edges appear only when
  *   there is more to scroll in that direction. The mouse wheel scrolls horizontally and
  *   the active tab is always scrolled into view.
+ * - Tabs can be dragged to reorder them (see useTabDrag), or moved with Alt+Shift+←/→.
  * - Switching is instant (store first, URL via History API — see useWorkspaceNav); the
  *   underline is a per-tab CSS transform, so it never slides from a stale position.
  */
@@ -68,11 +70,17 @@ export function TabBar({ leading }: { leading?: ReactNode }) {
   const tabs = useWorkspace((s) => s.tabs);
   const activeId = useWorkspace((s) => s.activeId);
   const dirty = useWorkspace((s) => s.dirty);
+  const moveTab = useWorkspace((s) => s.moveTab);
   const { openTab, closeTab } = useWorkspaceNav();
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const activeRef = useRef<HTMLDivElement | null>(null);
   const [edges, setEdges] = useState({ left: false, right: false });
   const labelWidth = useLabelWidth(scrollerRef);
+  const { draggingId, onPointerDown, onClickCapture, styleFor } = useTabDrag(
+    scrollerRef,
+    tabs,
+    moveTab,
+  );
   // Titles change after data loads (e.g. "Ticket" → "BL-1004 · Diya"), resizing tabs.
   const titlesKey = tabs.map((t) => t.title).join('|');
   const activeTitle = tabs.find((t) => t.id === activeId)?.title;
@@ -135,22 +143,30 @@ export function TabBar({ leading }: { leading?: ReactNode }) {
           role="tablist"
           aria-label="Open workspaces"
           onScroll={measure}
+          onClickCapture={onClickCapture}
           className="flex gap-1 overflow-x-auto scroll-smooth scroll-px-4 px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {tabs.map((tab, index) => {
             const active = tab.id === activeId;
             // Chrome-style separator on the right of inactive tabs, hidden next to the active tab.
             const nextIsActive = tabs[index + 1]?.id === activeId;
+            const dragging = tab.id === draggingId;
             const separator =
-              !active && !nextIsActive && index < tabs.length - 1 ? 'tab-separator' : '';
+              !draggingId && !active && !nextIsActive && index < tabs.length - 1
+                ? 'tab-separator'
+                : '';
             const minWidth =
               tab.closable && !active ? minWidthFor(tab.title, Boolean(dirty[tab.id])) : null;
             return (
               <div
                 key={tab.id}
+                data-tab-id={tab.id}
                 ref={active ? activeRef : undefined}
-                style={minWidth === null ? undefined : { minWidth }}
-                className={`group relative flex items-center rounded-t-lg transition-colors duration-100 ${
+                style={{ ...(minWidth === null ? null : { minWidth }), ...styleFor(index, tab.id) }}
+                onPointerDown={(e) => onPointerDown(e, index)}
+                className={`group relative flex items-center rounded-t-lg select-none transition-colors duration-100 ${
+                  dragging ? 'cursor-grabbing bg-surface shadow-md' : ''
+                } ${
                   tab.closable && !active
                     ? // Content-sized (max 220px); shrinks in proportion to its width when
                       // space runs out, down to its own content-based minimum (inline style).
@@ -172,6 +188,15 @@ export function TabBar({ leading }: { leading?: ReactNode }) {
                   aria-selected={active}
                   className="flex min-w-0 flex-auto items-center gap-1.5 py-2.5 pr-1 pl-3 text-[13px] font-medium"
                   onClick={() => openTab(tab)}
+                  onKeyDown={(e) => {
+                    if (!tab.closable || !e.altKey || !e.shiftKey) return;
+                    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                    e.preventDefault();
+                    moveTab(tab.id, index + (e.key === 'ArrowLeft' ? -1 : 1));
+                  }}
+                  aria-keyshortcuts={
+                    tab.closable ? 'Alt+Shift+ArrowLeft Alt+Shift+ArrowRight' : undefined
+                  }
                   title={tab.title}
                 >
                   {dirty[tab.id] ? (
@@ -185,6 +210,7 @@ export function TabBar({ leading }: { leading?: ReactNode }) {
                 {tab.closable ? (
                   <button
                     type="button"
+                    data-tab-close
                     aria-label={`Close ${tab.title}`}
                     onClick={() => closeTab(tab.id)}
                     // Every closable tab reserves the × slot (like Chrome). On inactive tabs the
