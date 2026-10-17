@@ -1,0 +1,29 @@
+{
+  "name": "bookleaf-support-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BookLeaf Publishing — Author Support & Communication Portal (Next.js + Express + MongoDB + AI)",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "pnpm --filter @bookleaf/api dev",
+    "dev:web": "pnpm --filter @bookleaf/web dev",
+    "build": "turbo run build",
+    "start:api": "pnpm --filter @bookleaf/api start",
+    "start:web": "pnpm --filter @bookleaf/web start",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "seed": "pnpm --filter @bookleaf/api seed",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.10",
+    "turbo": "2.11.8",
+    "typescript": "6.0.3"
+  }
+}

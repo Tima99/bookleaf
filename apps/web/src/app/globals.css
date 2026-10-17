@@ -1,0 +1,179 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens (mirrors src/styles/tokens.ts). Tailwind utilities such as
+ * bg-brand-600, text-ink-muted, border-line are generated from these.
+ */
+@theme {
+  /* BookLeaf pink (logo / "Publish My Book") and its light hero tints */
+  --color-brand-50: #fff5f7;
+  --color-brand-100: #ffe8ed;
+  --color-brand-200: #ffd4da;
+  --color-brand-300: #ffb4bd;
+  --color-brand-400: #ff7294;
+  --color-brand-500: #ff4975;
+  --color-brand-600: #f03a68;
+  --color-brand-700: #d6295a;
+  --color-brand-800: #a81e45;
+  --color-brand-900: #6e1430;
+  --color-accent-50: #eeeefa;
+  --color-accent-500: #4342b9;
+
+  --color-page: #fff7f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #fffafb;
+  --color-line: #f3dee3;
+  --color-divider: #f8ebef;
+  --color-ink: #272729;
+  --color-ink-muted: #5e5e5e;
+  --color-ink-subtle: #8e8a8c;
+  --color-success: #2e7d4f;
+  --color-warning: #b7791f;
+  --color-danger: #c62828;
+  --color-note: #fff8e6;
+  --color-note-border: #f2d59b;
+
+  --radius-card: 14px;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-lato), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --shadow-card: 0 1px 2px rgba(110, 20, 48, 0.04), 0 2px 6px rgba(110, 20, 48, 0.05);
+}
+
+/* Ant Design owns base element styles; keep Tailwind's preflight from fighting it. */
+@layer base {
+  html,
+  body {
+    background: var(--color-page);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.01em;
+  }
+  ::selection {
+    background: var(--color-brand-200);
+  }
+}
+
+@layer components {
+  .surface-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  .page-title {
+    font-family: var(--font-display);
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: var(--color-ink);
+    line-height: 1.25;
+  }
+  .section-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-ink-subtle);
+  }
+  /* Soft pink hero wash, echoing the bookleafpub.in landing page. */
+  .brand-wash {
+    background:
+      radial-gradient(120% 90% at 100% 0%, var(--color-brand-200) 0%, transparent 55%),
+      radial-gradient(90% 70% at 0% 100%, var(--color-brand-100) 0%, transparent 60%),
+      var(--color-brand-50);
+  }
+  .prose-message {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+  }
+}
+
+/* Subtle, fast button feedback (no animation on routine data rows). */
+.ant-btn {
+  transition:
+    transform 120ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease !important;
+}
+.ant-btn:not(:disabled):active {
+  transform: translateY(0.5px) scale(0.985);
+}
+:focus-visible {
+  outline: 2px solid var(--color-brand-400);
+  outline-offset: 2px;
+}
+
+/* Workspace tab panel entrance (opacity only — cheap, no layout shift). */
+@keyframes tab-in {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Hidden-but-cached workspace tab (see WorkspaceHost). */
+.workspace-panel-hidden {
+  content-visibility: hidden;
+  height: 0;
+  overflow: hidden;
+}
+
+/*
+ * Tab strip edge shadows (Chrome-style "there's more this way" cue). A white fade softens
+ * the cut-off tab, and an inset shadow suggests depth. Shown only when scrollable.
+ */
+.tabstrip-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 44px;
+  pointer-events: none;
+}
+.tabstrip-edge-left {
+  left: 0;
+  background: linear-gradient(to right, var(--color-surface) 20%, rgb(255 255 255 / 0));
+  box-shadow: inset 14px 0 12px -10px rgb(110 20 48 / 0.32);
+}
+.tabstrip-edge-right {
+  right: 0;
+  background: linear-gradient(to left, var(--color-surface) 20%, rgb(255 255 255 / 0));
+  box-shadow: inset -14px 0 12px -10px rgb(110 20 48 / 0.32);
+}
+
+/* Thin divider between inactive tabs (hidden on hover, like Chrome). */
+.tab-separator::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  top: 30%;
+  height: 40%;
+  width: 1px;
+  background: var(--color-line);
+}
+.tab-separator:hover::after {
+  opacity: 0;
+}
+
+/* Priority accent on queue rows. */
+.row-critical td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-danger);
+}
+.row-high td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

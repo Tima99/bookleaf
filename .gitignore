@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.next/
+.turbo/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local MongoDB data directory
+.data/
+
+# Provided assignment dataset — kept local only (do not publish).
+data/*.json
+
+# Logs / OS
+*.log
+.DS_Store
+playwright-report/
+test-results/

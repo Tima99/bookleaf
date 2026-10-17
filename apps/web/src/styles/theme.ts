@@ -1,0 +1,85 @@
+import type { ThemeConfig } from 'antd';
+import { tokens } from './tokens';
+
+const { brand } = tokens.color;
+
+/** Ant Design theme mapped from the shared BookLeaf design tokens. */
+export const antdTheme: ThemeConfig = {
+  token: {
+    colorPrimary: brand[500],
+    colorPrimaryHover: brand[400],
+    colorPrimaryActive: brand[600],
+    colorPrimaryBg: brand[100],
+    colorPrimaryBgHover: brand[200],
+    colorPrimaryBorder: brand[300],
+    colorPrimaryText: brand[700],
+    colorPrimaryTextHover: brand[600],
+    colorInfo: tokens.color.info,
+    colorSuccess: tokens.color.success,
+    colorWarning: tokens.color.warning,
+    colorError: tokens.color.danger,
+    colorLink: brand[700],
+    colorLinkHover: brand[600],
+    colorLinkActive: brand[800],
+    colorText: tokens.color.ink,
+    colorTextSecondary: tokens.color.inkMuted,
+    colorTextTertiary: tokens.color.inkSubtle,
+    colorBorder: tokens.color.border,
+    colorBorderSecondary: tokens.color.divider,
+    colorBgLayout: tokens.color.page,
+    colorBgContainer: tokens.color.surface,
+    controlOutline: 'rgba(255, 73, 117, 0.16)',
+    controlItemBgActive: brand[100],
+    controlItemBgHover: brand[50],
+    borderRadius: tokens.radius.md,
+    borderRadiusLG: tokens.radius.lg,
+    borderRadiusSM: tokens.radius.sm,
+    fontFamily: tokens.font.sans,
+    fontSize: 14,
+    controlHeight: 36,
+    motionDurationMid: '0.16s',
+    motionDurationSlow: '0.22s',
+  },
+  components: {
+    Layout: {
+      siderBg: tokens.color.surface,
+      headerBg: tokens.color.surface,
+      bodyBg: tokens.color.page,
+      headerHeight: tokens.layout.header,
+      headerPadding: '0 20px',
+    },
+    Menu: {
+      itemBg: 'transparent',
+      itemColor: tokens.color.inkMuted,
+      itemHoverColor: tokens.color.ink,
+      itemHoverBg: brand[50],
+      itemSelectedBg: brand[100],
+      itemSelectedColor: brand[700],
+      itemActiveBg: brand[100],
+      itemBorderRadius: tokens.radius.pill,
+      activeBarBorderWidth: 0,
+      // Snappy selection change — a slow fade reads as the highlight "dragging" across items.
+      motionDurationSlow: '0.08s',
+      motionDurationMid: '0.08s',
+    },
+    // Pill-shaped buttons, like "Publish My Book" on bookleafpub.in.
+    Button: {
+      borderRadius: 20,
+      borderRadiusLG: 24,
+      borderRadiusSM: 16,
+      primaryShadow: 'none',
+      defaultShadow: 'none',
+      fontWeight: 600,
+    },
+    Table: {
+      headerBg: tokens.color.surfaceMuted,
+      headerColor: tokens.color.inkMuted,
+      rowHoverBg: brand[50],
+      cellPaddingBlock: 12,
+    },
+    Tabs: { itemSelectedColor: brand[700], itemHoverColor: brand[600], inkBarColor: brand[500] },
+    Segmented: { itemSelectedColor: brand[700] },
+    Card: { headerFontSize: 15 },
+    Tag: { defaultBg: tokens.color.surfaceMuted },
+  },
+};

@@ -1,0 +1,41 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Only these dependencies may run install scripts (supply-chain hardening).
+allowBuilds:
+  esbuild: true
+  sharp: true
+  # mongodb-memory-server would download a MongoDB binary on install; tests use
+  # the locally installed mongod instead (see apps/api/vitest.config.ts).
+  mongodb-memory-server: false
+  # Analytics/telemetry pinger pulled in by swagger-ui — never needed.
+  '@scarf/scarf': false
+  # Ships prebuilt native bindings; its postinstall is optional.
+  unrs-resolver: false
+
+minimumReleaseAgeExclude:
+  - '@ai-sdk/anthropic@4.0.80'
+  - '@ai-sdk/gateway@4.0.114'
+  - '@ai-sdk/openai@4.0.94'
+  - '@ai-sdk/provider-utils@5.0.60'
+  - '@next/env@16.4.1'
+  - '@next/eslint-plugin-next@16.4.1'
+  - '@next/swc-darwin-arm64@16.4.1'
+  - '@next/swc-darwin-x64@16.4.1'
+  - '@next/swc-linux-arm64-gnu@16.4.1'
+  - '@next/swc-linux-arm64-musl@16.4.1'
+  - '@next/swc-linux-x64-gnu@16.4.1'
+  - '@next/swc-linux-x64-musl@16.4.1'
+  - '@next/swc-win32-arm64-msvc@16.4.1'
+  - '@next/swc-win32-x64-msvc@16.4.1'
+  - '@tanstack/query-core@5.104.3'
+  - '@tanstack/react-query@5.104.3'
+  - '@vitest/mocker@5.0.5'
+  - '@vitest/spy@5.0.5'
+  - ai@7.0.141
+  - eslint-config-next@16.4.1
+  - framer-motion@14.3.0
+  - motion-dom@14.3.0
+  - next@16.4.1
+  - vitest@5.0.5
