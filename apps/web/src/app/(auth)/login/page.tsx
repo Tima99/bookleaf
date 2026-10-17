@@ -3,10 +3,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Alert, Button, Form, Input } from 'antd';
 import { motion } from 'framer-motion';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { LoginRequestSchema, type LoginRequest } from '@bookleaf/contracts';
+import sharkTankIndia from '@/assets/shark-tank-india.webp';
 import { BrandMark } from '@/components/layout/brand';
 import { homeFor, useAuth } from '@/features/auth/auth-provider';
 import { errorMessage } from '@/lib/api-client';
@@ -55,14 +57,23 @@ function LoginForm() {
     <div className="grid min-h-screen lg:grid-cols-[1.05fr_1fr]">
       <aside className="brand-wash relative hidden flex-col justify-between overflow-hidden p-12 lg:flex">
         <BrandMark />
-        <div className="relative z-10 max-w-md">
-          <h1 className="font-display text-[2.75rem] font-black leading-[1.1] text-brand-500">
-            Every author question, answered with care.
-          </h1>
-          <p className="mt-5 text-[17px] leading-relaxed text-ink-muted">
-            Track your books and royalties, raise a query in seconds, and hear back from the
-            BookLeaf team — all in one place.
-          </p>
+        <div className="relative z-10">
+          <div className="max-w-md">
+            <h1 className="font-display text-[2.75rem] font-black leading-[1.1] text-brand-500">
+              Every author question, answered with care.
+            </h1>
+            <p className="mt-5 text-[17px] leading-relaxed text-ink-muted">
+              Track your books and royalties, raise a query in seconds, and hear back from the
+              BookLeaf team — all in one place.
+            </p>
+          </div>
+          <Image
+            src={sharkTankIndia}
+            alt="BookLeaf Publishing's founders pitching on Shark Tank India"
+            sizes="(min-width: 1024px) 48vw, 100vw"
+            placeholder="blur"
+            className="mt-10 h-auto w-full rounded-xl shadow-lg ring-1 ring-black/5"
+          />
         </div>
         <p className="relative z-10 text-xs text-ink-subtle">
           BookLeaf Publishing · India &amp; US
