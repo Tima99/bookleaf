@@ -1,3 +1,4 @@
+import { createRequire } from 'node:module';
 import pino, { type Logger } from 'pino';
 
 /**
@@ -18,12 +19,22 @@ export const REDACT_PATHS = [
   '*.description',
 ];
 
+/** pino-pretty is a dev dependency; deployed bundles (no node_modules) log plain JSON. */
+function prettyAvailable(): boolean {
+  try {
+    createRequire(import.meta.url).resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createLogger(level: string, pretty: boolean): Logger {
   return pino({
     level,
     redact: { paths: REDACT_PATHS, censor: '[redacted]' },
     base: { service: 'bookleaf-api' },
-    ...(pretty
+    ...(pretty && prettyAvailable()
       ? {
           transport: {
             target: 'pino-pretty',

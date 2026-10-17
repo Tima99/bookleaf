@@ -39,15 +39,14 @@ corepack enable && pnpm install --frozen-lockfile && pnpm turbo run build --filt
 # Start command
 node apps/api/dist/server.js
 # Health check path
-/health/ready
+/health
 ```
 
 ## Web environment (`apps/web`)
 
-| Variable                | Example                                                 |
-| ----------------------- | ------------------------------------------------------- |
-| `NEXT_PUBLIC_API_URL`   | `https://bookleaf-api.onrender.com`                     |
-| `NEXT_PUBLIC_DEMO_MODE` | `true` to show demo-account shortcuts on the login page |
+| Variable              | Example                             |
+| --------------------- | ----------------------------------- |
+| `NEXT_PUBLIC_API_URL` | `https://bookleaf-api.onrender.com` |
 
 ## Seeding the deployed database
 
@@ -65,7 +64,7 @@ re-running updates authors/books in place and never duplicates tickets or resets
 
 ## Post-deploy checklist
 
-1. `GET /health/ready` → `{"status":"ready"}`.
+1. `GET /health` → 200 with `"status":"ok"` and `"database":{"connected":true}`.
 2. Sign in as an author → My Books shows the dataset; create a ticket.
 3. Sign in as an admin in another browser → the ticket appears without refresh; open it,
    check triage, generate/edit a draft, send → the author sees it live.

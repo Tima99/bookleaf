@@ -1,190 +1,168 @@
 # BookLeaf — Author Support & Communication Portal
 
-A web application for BookLeaf Publishing's author support: authors track their books and
-royalties and raise tickets; the operations team works an urgency-ordered queue in a tabbed
-workspace with **AI classification, AI priority scoring and AI-drafted replies grounded in
-BookLeaf's knowledge base** — with graceful fallbacks when AI is unavailable.
+Authors track their books and royalties and raise support tickets. BookLeaf's support team
+gets every ticket **sorted, prioritised and answered with an AI-drafted reply** based on
+BookLeaf's policies, and a person always reviews it before it's sent.
 
-|          |                                                                                                                                                             |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Frontend | Next.js 16 (App Router, UI only) · React 19 · TypeScript · Ant Design 6 · Tailwind CSS 4 · Framer Motion · TanStack Query · React Hook Form + Zod · Zustand |
-| Backend  | Node.js 24 · Express 5 · TypeScript · MongoDB + Mongoose 9 · Zod · JWT (HTTP-only cookie) + CSRF · Pino · SSE                                               |
-| AI       | Vercel AI SDK 7 (`@ai-sdk/openai` default — GPT-6 Luna / GPT-6.1 Sol; `@ai-sdk/anthropic` supported) · structured outputs validated with Zod                |
-| Tooling  | pnpm 12 workspaces · Turborepo · Vitest · Supertest · mongodb-memory-server · ESLint · Prettier                                                             |
+## Run locally
 
-**Docs:** [Architecture](docs/ARCHITECTURE.md) · [Database](docs/DATABASE.md) ·
-[API](docs/API.md) (+ OpenAPI at `/api/docs`) · [AI strategy](docs/AI_STRATEGY.md) ·
-[AI prompts](docs/AI_PROMPTS.md) · [Security](docs/SECURITY.md) · [UI/UX](docs/UI_UX.md) ·
-[Deployment](docs/DEPLOYMENT.md) · [Approach (1-page write-up)](docs/APPROACH.md)
+This is a **pnpm + Turbo monorepo**: the portal (`apps/web`), the API (`apps/api`) and
+shared packages (`packages/*`) install and run together from the repo root.
 
----
+Needs:
 
-## Features
-
-**Author portal**
-
-- Email/password sign-in; authors only ever see their own data (enforced by the API).
-- Dashboard: books, copies sold, royalty earned/paid/pending, open tickets, royalty calendar
-  with real payout deadlines and the ₹1,000 threshold notice.
-- My Books: searchable, filterable, paginated; books in production show "Available once
-  published" instead of fake zeros; detail drawer.
-- Raise a query: book selector incl. "General / Account level", validated subject and
-  description, production-stage notice from the book's real status, attachment UI (clearly
-  marked as not uploaded).
-- My Tickets: status filter + search, conversation thread, reply / re-open, **live updates
-  via SSE** with automatic polling fallback.
-
-**Admin portal**
-
-- Operations dashboard from real data (open/in-progress/critical/unassigned/awaiting reply,
-  average first-response time, unresolved by category, needs-attention list, activity).
-- Ticket queue: server-side search, filters (status, category, priority, assignee, date
-  range), urgency-first sort, overdue (>48h) and priority highlighting; filters persist.
-- **Tabbed workspace**: tickets, authors and strategies open as tabs; no duplicates; tabs
-  stay mounted so unsaved replies survive switching; unsaved-changes guard; refresh restores.
-- Ticket workspace: plain-language "Category & priority" (AI / Auto / Edited badges, change
-  either, "Ask AI again"), AI-drafted reply (editable, check-before-sending list, new
-  draft on request), send / send & resolve,
-  internal notes (never visible to authors), assignment, status lifecycle, audit timeline.
-- Author directory with books, royalties and tickets per author.
-- **Column chooser** on every data table (show/hide columns from a dropdown, remembered per viewer).
-- **AI settings** (internally "AI strategies"): versioned per-category strategies for classification, priority scoring
-  and drafting — edit, duplicate, enable/disable, preview the composed prompt, test on a
-  sample ticket, roll back; run log with latency, tokens and failures; knowledge-base viewer.
-
----
-
-## Prerequisites
-
-- **Node.js 24 LTS** (`.nvmrc` → `nvm use`)
-- **pnpm 12** (`npm i -g pnpm@12.11.2` or `corepack enable`)
-- **MongoDB 7+** running locally (or a MongoDB Atlas URI)
-- Optional: an OpenAI (or Anthropic) API key — without one the app runs in **manual mode**
-
-## Monorepo layout
-
-```
-apps/
-  api/          Express REST API (src/modules/{auth,authors,books,tickets,admin,ai,knowledge-base,audit})
-  web/          Next.js frontend (src/app routes, src/features, src/components, src/stores)
-packages/
-  contracts/    Shared Zod schemas, enums and DTO types
-  utils/        Formatting + royalty calendar helpers
-  config/       Shared tsconfig / ESLint config
-data/           bookleaf_sample_data.json (provided by BookLeaf — git-ignored, add locally)
-docs/           Technical documentation
-```
-
-## Setup
+- **Node 24** (`nvm use` picks it up from `.nvmrc`)
+- **pnpm 12**
+- **MongoDB**, local or Atlas
+- **An OpenAI or Anthropic API key.** Both are supported; add a key for either one to get
+  AI-categorised and prioritised tickets and drafted replies.
 
 ```bash
-nvm use                       # Node 24
+# Install packages
 pnpm install
 
-# 1. Environment
-cp apps/api/.env.example apps/api/.env       # set JWT_SECRET; optionally OPENAI_API_KEY
-cp apps/web/.env.example apps/web/.env.local # NEXT_PUBLIC_API_URL=http://localhost:4000
+# Copy the env files and fill in the values
+# In apps/api/.env set JWT_SECRET, AI_PROVIDER (openai or anthropic) and that provider's API key.
+# Note: for seeding, SEED_DATA_PATH is the source (path to bookleaf_sample_data.json, saved
+# anywhere) and MONGODB_URI is the target database.
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env.local     # NEXT_PUBLIC_API_URL, defaults to the local API
 
-# 2. Database (any MongoDB works; this starts a local one)
-mkdir -p .data/db && mongod --dbpath .data/db --bind_ip 127.0.0.1 --fork --logpath .data/mongod.log
-
-# 3. Seed — put the provided dataset at data/bookleaf_sample_data.json first
+# Seed the database (adds or updates records, never deletes existing data)
 pnpm seed
 
-# 4. Run both apps (API :4000, web :3000)
+# Run the API and the portal with one command
 pnpm dev
 ```
 
-Open <http://localhost:3000>. API docs: <http://localhost:4000/api/docs>.
+Then open <http://localhost:3000/login?test-creds=1> and pick a test account.
 
-### Commands
+## Live demo
 
-| Command                                      | What it does                                                                                                                                 |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm dev`                                   | API (tsx watch) + web (next dev) via Turborepo                                                                                               |
-| `pnpm dev:api` / `pnpm dev:web`              | One app only                                                                                                                                 |
-| `pnpm seed`                                  | Idempotent seed (dataset, demo users, AI strategies, demo tickets). `--no-demo-tickets` to skip tickets, `--file <path>` for another dataset |
-| `pnpm build`                                 | Production builds (API bundled with tsup → `apps/api/dist`, web → `.next`)                                                                   |
-| `pnpm start:api` / `pnpm start:web`          | Run production builds                                                                                                                        |
-| `pnpm typecheck` / `pnpm lint` / `pnpm test` | Strict TS, ESLint, Vitest across the workspace                                                                                               |
-| `pnpm format`                                | Prettier                                                                                                                                     |
+|                   | URL                                                      |
+| ----------------- | -------------------------------------------------------- |
+| **Author portal** | <https://bookleaf.code26.site/author>                    |
+| **Admin portal**  | <https://bookleaf.code26.site/admin>                     |
+| **Backend API**   | <https://api.bookleaf.code26.site> (status at `/health`) |
 
-## Demo credentials
+Both portals sign in at `/login`. Open
+**<https://bookleaf.code26.site/login?test-creds=1>** to see the test accounts with
+one-click sign-in.
 
-Created by `pnpm seed` (passwords come from `SEED_AUTHOR_PASSWORD` / `SEED_ADMIN_PASSWORD`;
-the values below are the local defaults in `apps/api/.env.example`):
+| Role                             | Email                                                   | Password      |
+| -------------------------------- | ------------------------------------------------------- | ------------- |
+| Admin                            | `support.lead@bookleaf.test`, `ops.agent@bookleaf.test` | `Admin@2026`  |
+| Author                           | `priya.sharma@email.com` (any author in the dataset)    | `Author@2026` |
+| Author with a book in production | `kavita.deshmukh@email.com`                             | `Author@2026` |
+| Author with no payout yet        | `ananya.reddy@email.com`                                | `Author@2026` |
 
-| Role                        | Email                                                            | Password      |
-| --------------------------- | ---------------------------------------------------------------- | ------------- |
-| Admin                       | `support.lead@bookleaf.test` (Aditi Rao)                         | `Admin@2026`  |
-| Admin                       | `ops.agent@bookleaf.test` (Karan Mehta)                          | `Admin@2026`  |
-| Author                      | any author email from the dataset, e.g. `priya.sharma@email.com` | `Author@2026` |
-| Author (book in production) | `kavita.deshmukh@email.com`, `sneha.kulkarni@email.com`          | `Author@2026` |
-| Author (no payout yet)      | `ananya.reddy@email.com`, `arjun.malhotra@email.com`             | `Author@2026` |
+**Try it in 1 minute:** as an author, raise "I haven't received any royalty for 6 months".
+In another browser, sign in as an admin. The ticket is already at the top of the queue,
+marked High, with a draft reply ready. Edit it and send it, and the author sees it
+instantly.
 
-The login page shows one-click demo shortcuts when `NEXT_PUBLIC_DEMO_MODE=true`.
+## How it solves BookLeaf's problem
 
-## AI configuration
+**Situation:** BookLeaf's support team answers authors **by hand**. Replies are **slow and
+inconsistent**, **urgent issues get buried** in the backlog, and authors keep asking
+"**where is my royalty?**"
 
-Set in `apps/api/.env` (server-side only):
+**Task:** Answer every author **quickly and accurately**, put **urgent tickets first**, and
+let authors **help themselves**, without taking people out of the loop.
+
+**Action:**
+
+- Every new ticket is **auto-sorted into 6 categories** and given a **priority**; the queue
+  shows the most urgent and oldest first.
+- The AI **drafts a reply** that follows **BookLeaf's policies and tone** and uses the
+  author's **real book and royalty figures**. Staff **review, edit and send** it.
+- Authors see their **books, royalties, pending amounts and next payout date** themselves.
+- Replies and status changes appear **live** on the author's ticket.
+- Staff stay **in control**: they can change category and priority, add **internal notes**
+  and tune the AI in plain language under **AI settings**.
+- If the AI is down, tickets are **still created**, with **rule-based sorting** and
+  **template replies**.
+
+**Result:** Tickets arrive **sorted, prioritised and with a draft ready**, so staff reply in
+**seconds** instead of writing from scratch. Answers are **consistent**, nothing urgent is
+missed, and authors get **fewer reasons to ask**.
+
+## Tech stack
+
+| Part     | Technology                                                                                    |
+| -------- | --------------------------------------------------------------------------------------------- |
+| Frontend | Next.js 16, React 19, TypeScript, Ant Design 6, Tailwind CSS 4, TanStack Query, Zustand       |
+| Backend  | Node.js 24, Express 5, TypeScript, Zod validation, JWT in HTTP-only cookie + CSRF protection  |
+| Database | MongoDB (Atlas in production) with Mongoose                                                   |
+| AI       | OpenAI or Anthropic via the Vercel AI SDK, structured output validated with Zod               |
+| Live     | Server-Sent Events                                                                            |
+| Tooling  | pnpm workspaces, Turborepo, Vitest + Supertest, ESLint, Prettier                              |
+
+## How it's built
+
+![BookLeaf architecture: Next.js frontend, Node.js + Express backend with REST, SSE, an event bus and the AI module, MongoDB Atlas and OpenAI or Anthropic](docs/images/architecture.svg)
+
+## AI, briefly
+
+![What goes into each AI call: triage uses no knowledge base; drafts use the tone guide in the system prompt and the top 1–3 policy sections in the user prompt](docs/images/ai-pipeline.svg)
+
+- **Sorting and priority:** one small, fast model call per new ticket returns the category,
+  priority, confidence and reason. Policy rules can only raise priority (e.g. ISBN errors
+  are at least High), and a staff member's change is never overwritten.
+- **Draft replies:** a stronger model gets the ticket, the author's real book data, payout
+  dates computed in code, and only the 1–3 relevant policy sections, not the whole
+  knowledge base. It also returns a "check before sending" list.
+- **Cost-aware:** drafts are cached until the conversation changes, history is limited to the
+  last 6 messages, and every call's tokens are logged.
+- **Safe failure:** timeouts, rate limits and bad output all fall back to rules and templates,
+  with a circuit breaker to stop repeated failing calls.
+
+## Why SSE instead of WebSockets
+
+- **Updates only flow one way** (server → browser). Everything users do already goes
+  through normal, validated REST calls.
+- **It's plain HTTP**, so the same login cookie, permission checks and proxies work unchanged.
+  No separate socket authentication is needed.
+- **The browser has it built in** and reconnects on its own; the portal also falls back to
+  polling every 20 seconds.
+- **It can't leak data:** events only carry a ticket ID, and the browser then re-fetches
+  through the secured API.
+
+WebSockets would make sense for two-way features such as typing indicators or live chat.
+
+## Deployment
+
+| Part             | Hosted on                 |
+| ---------------- | ------------------------- |
+| Portal (Next.js) | **Zoho Catalyst Slate**   |
+| API (Express)    | **Zoho Catalyst AppSail** |
+| Database         | **MongoDB Atlas**         |
 
 ```bash
-AI_PROVIDER=openai               # default; or anthropic | none
-OPENAI_API_KEY=sk-...            # empty → manual mode
-# defaults: AI_TRIAGE_MODEL=gpt-6-luna  AI_DRAFT_MODEL=gpt-6.1-sol
-# (Anthropic: AI_PROVIDER=anthropic + ANTHROPIC_API_KEY → claude-haiku-5-5 / claude-opus-5-5)
+catalyst deploy --only appsail:bookleaf-api                          # builds and deploys the API
+pnpm slate:prepare && catalyst deploy --only slate:bookleaf-portal   # packages and deploys the portal
 ```
 
-- Triage (category + priority) runs in the background after each ticket is created.
-- Drafts are generated when an admin opens a ticket, cached until the conversation changes.
-- Without a key (or if the provider fails), tickets are triaged by keyword rules and replies
-  start from policy templates — everything else works. See [AI strategy](docs/AI_STRATEGY.md).
+- **API:** builds on your machine into a single self-contained `dist/` folder, and only that
+  folder is uploaded.
+- **Portal:** Slate builds it on Zoho's servers with npm. `slate:prepare` creates a small
+  standalone copy of the web app and its shared packages in `.slate/` for it to build.
+- **Secrets:** they live only in the Catalyst console, never in the repo.
 
 ## Testing
 
 ```bash
-pnpm test        # all packages
-pnpm --filter @bookleaf/api test
+pnpm typecheck && pnpm lint && pnpm test
 ```
 
-API tests spin up an in-memory MongoDB (using the local `mongod` binary,
-`MONGOMS_SYSTEM_BINARY`, default `/usr/bin/mongod`) and a fake LLM — no network calls.
-Coverage: login success/failure/enumeration, CSRF, content-type guard, RBAC, cross-author
-isolation (books + tickets), null book fields, ticket creation with AI success / rate limit /
-not configured, priority floor rules, duplicate prevention, queue filters + pagination,
-admin overrides surviving re-triage, status transitions, mass-assignment rejection,
-assignment, internal-note privacy, draft caching / regeneration / template fallback, reply
-provenance, author follow-ups and re-open, dashboard, author directory, strategy defaults,
-validation, versioning + rollback, one-enabled-per-scope, prompt preview (KB selection,
-injection neutralisation), seed idempotency, and — when the dataset file is present —
-exactly 10 authors / 18 books.
-
-### Verification status
-
-| Check                                                                                                                                                                                 | Result                                                                           |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `pnpm typecheck` (strict TS, 4 packages)                                                                                                                                              | ✅ pass                                                                          |
-| `pnpm lint` (ESLint incl. React Compiler rules)                                                                                                                                       | ✅ pass                                                                          |
-| `pnpm test`                                                                                                                                                                           | ✅ 67 tests (64 API in 6 files + 3 utils), incl. the real-dataset seed test      |
-| `pnpm build` (API bundle + Next.js production build)                                                                                                                                  | ✅ pass                                                                          |
-| Seed against local MongoDB, run twice                                                                                                                                                 | ✅ 10 authors, 18 books, 12 users, 13 strategies, 7 demo tickets — no duplicates |
-| API smoke test on the running build (24 checks: auth, RBAC, CSRF, rules triage, floors, override, reply, note privacy, SSE delivery/filtering, strategy preview)                      | ✅ pass                                                                          |
-| Headless-Chrome walkthrough of both portals (author raises ticket → admin replies → author sees it live; unsaved reply survives tab switch; mobile 390 px has no horizontal overflow) | ✅ pass                                                                          |
-| Live LLM calls                                                                                                                                                                        | ⏸ not run (no key; data kept local) — covered by fake-provider tests             |
-
-## Deployment
-
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) (Vercel + Render/Railway + MongoDB Atlas, env vars,
-seeding a remote database, post-deploy checks). **This submission was not deployed** —
-everything was built and verified locally.
+76 automated tests run against an in-memory MongoDB and a fake AI, so they make no network
+calls. They cover login, permissions, authors seeing only their own data, ticket flows,
+AI fallbacks and seeding.
 
 ## Known limitations
 
-- Single-instance assumptions: in-process SSE fan-out, rate limits, background jobs and
-  circuit breaker (interfaces are in place for Redis/queues).
-- Attachments are UI only (not uploaded or stored).
-- No real model calls were made during development (no key; data kept local) — AI paths are
-  verified with a fake provider in tests.
-- Regex search; Atlas Search would be the production choice.
-- No email notifications, SLA alerts, password reset or MFA.
-- Brand palette is sampled from the BookLeaf website (pink `#FF4975` on lightest-pink canvas); the logo mark is a drawn approximation, not the official asset.
+- Runs as a single API instance. Scaling out needs Redis for live updates, rate limits and
+  background jobs.
+- Attachments are UI only (not uploaded).
+- No email notifications, password reset or MFA yet.
+- No labelled evaluation set yet to measure AI accuracy over time.

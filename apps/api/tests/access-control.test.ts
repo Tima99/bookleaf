@@ -1,3 +1,4 @@
+import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   loginAdmin,
@@ -83,5 +84,32 @@ describe('author data access', () => {
     const res = await admin.get('/api/v1/admin/tickets/not-an-id');
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('health', () => {
+  it('greets visitors on the home route with useful links', async () => {
+    const res = await request(ctx.app).get('/');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      name: 'BookLeaf Author Support API',
+      links: { health: '/health', api: '/api/v1' },
+    });
+    expect((await request(ctx.app).get('/api/docs')).status).toBe(404);
+  });
+
+  it('reports uptime and the MongoDB connection in one public route', async () => {
+    const res = await request(ctx.app).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      status: 'ok',
+      database: { connected: true, state: 'connected' },
+    });
+    expect(res.body.uptimeSeconds).toBeTypeOf('number');
+    expect(
+      await request(ctx.app)
+        .get('/health/ready')
+        .then((r) => r.status),
+    ).toBe(404);
   });
 });

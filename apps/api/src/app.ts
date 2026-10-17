@@ -1,12 +1,8 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { Router } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
-import swaggerUi from 'swagger-ui-express';
-import { parse as parseYaml } from 'yaml';
 import {
   authenticate,
   authorize,
@@ -18,21 +14,12 @@ import { createErrorHandler, notFoundHandler } from './common/middleware/error-h
 import { createRateLimiters } from './common/middleware/rate-limit';
 import { requestId } from './common/middleware/request-id';
 import type { Container } from './container';
-import { isDatabaseReady } from './database/connection';
+import { databaseState, isDatabaseReady } from './database/connection';
 import { createAdminRouter } from './modules/admin/admin.routes';
 import { createAiAdminRouter } from './modules/ai/ai.routes';
 import { createAuthRouter } from './modules/auth/auth.routes';
 import { createAuthorSelfRouter } from './modules/authors/author.routes';
 import { createAdminTicketRouter, createAuthorTicketRouter } from './modules/tickets/ticket.routes';
-
-function loadOpenApiSpec(): Record<string, unknown> | null {
-  // src/docs/openapi.yaml in development; copied next to the bundle in production.
-  const candidates = ['./docs/openapi.yaml', './openapi.yaml'].map((p) =>
-    fileURLToPath(new URL(p, import.meta.url)),
-  );
-  const file = candidates.find((p) => existsSync(p));
-  return file ? (parseYaml(readFileSync(file, 'utf8')) as Record<string, unknown>) : null;
-}
 
 /**
  * Builds the Express application. Request lifecycle:
@@ -76,25 +63,31 @@ export function createApp(container: Container, options: { rateLimitMultiplier?:
   app.use(cookieParser());
   app.use(limiters.global);
 
-  /* ------------------------------ health ------------------------------ */
-  app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', uptimeSeconds: Math.round(process.uptime()) });
-  });
-  app.get('/health/ready', (_req, res) => {
-    const ready = isDatabaseReady();
-    res
-      .status(ready ? 200 : 503)
-      .json({ status: ready ? 'ready' : 'unavailable', database: ready });
+  /* ------------------------------- home ------------------------------- */
+  // A friendly landing response for anyone opening the API URL in a browser.
+  app.get('/', (_req, res) => {
+    res.json({
+      name: 'BookLeaf Author Support API',
+      message: 'Welcome to the BookLeaf Author Support & Communication Portal API.',
+      version: 'v1',
+      links: {
+        health: '/health',
+        api: '/api/v1',
+      },
+    });
   });
 
-  /* ------------------------------- docs ------------------------------- */
-  const spec = loadOpenApiSpec();
-  if (spec) {
-    app.get('/api/openapi.json', (_req, res) => {
-      res.json(spec);
+  /* ------------------------------ health ------------------------------ */
+  // One check for monitors: 200 when the server and MongoDB are both up, 503 otherwise.
+  app.get('/health', (_req, res) => {
+    const connected = isDatabaseReady();
+    res.status(connected ? 200 : 503).json({
+      status: connected ? 'ok' : 'degraded',
+      uptimeSeconds: Math.round(process.uptime()),
+      database: { connected, state: databaseState() },
+      timestamp: new Date().toISOString(),
     });
-    if (!config.isProduction) app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(spec));
-  }
+  });
 
   /* -------------------------------- API ------------------------------- */
   const api = Router();

@@ -19,6 +19,11 @@ export async function connectDatabase(uri: string, logger: Logger): Promise<type
   return conn;
 }
 
+/** Mongoose connection state as a word, e.g. "connected", "connecting", "disconnected". */
+export function databaseState(): string {
+  return mongoose.ConnectionStates[mongoose.connection.readyState] ?? 'unknown';
+}
+
 export function isDatabaseReady(): boolean {
   return mongoose.connection.readyState === mongoose.ConnectionStates.connected;
 }

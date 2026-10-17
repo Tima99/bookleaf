@@ -1,0 +1,14 @@
+{
+  "appsail": [
+    {
+      "source": "apps/api",
+      "name": "bookleaf-api"
+    }
+  ],
+  "slate": [
+    {
+      "name": "bookleaf-portal",
+      "source": ".slate"
+    }
+  ]
+}

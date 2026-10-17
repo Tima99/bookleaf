@@ -15,6 +15,8 @@ const EnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
+    // Zoho Catalyst AppSail assigns the listen port through this variable; it wins over PORT.
+    X_ZOHO_CATALYST_LISTEN_PORT: z.coerce.number().int().min(1).max(65535).optional(),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -115,7 +117,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
   return {
     nodeEnv: env.NODE_ENV,
     isProduction,
-    port: env.PORT,
+    port: env.X_ZOHO_CATALYST_LISTEN_PORT ?? env.PORT,
     logLevel: env.LOG_LEVEL,
     mongoUri: env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/bookleaf',
     jwtSecret: env.JWT_SECRET ?? randomBytes(48).toString('base64url'),

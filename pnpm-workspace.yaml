@@ -9,8 +9,6 @@ allowBuilds:
   # mongodb-memory-server would download a MongoDB binary on install; tests use
   # the locally installed mongod instead (see apps/api/vitest.config.ts).
   mongodb-memory-server: false
-  # Analytics/telemetry pinger pulled in by swagger-ui — never needed.
-  '@scarf/scarf': false
   # Ships prebuilt native bindings; its postinstall is optional.
   unrs-resolver: false
 

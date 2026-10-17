@@ -11,8 +11,11 @@ import { BrandMark } from '@/components/layout/brand';
 import { homeFor, useAuth } from '@/features/auth/auth-provider';
 import { errorMessage } from '@/lib/api-client';
 
-const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-const DEMO_ACCOUNTS = [
+/**
+ * Test accounts for reviewers. Hidden by default; shown only on /login?test-creds=1
+ * (the README links there). These are the seeded demo passwords, not real credentials.
+ */
+const TEST_ACCOUNTS = [
   { label: 'Author · Priya Sharma', email: 'priya.sharma@email.com', password: 'Author@2026' },
   {
     label: 'Author · Kavita Deshmukh',
@@ -27,6 +30,7 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const showTestAccounts = params.get('test-creds') === '1';
 
   const { control, handleSubmit, setValue, formState } = useForm<LoginRequest>({
     resolver: zodResolver(LoginRequestSchema),
@@ -149,21 +153,25 @@ function LoginForm() {
             </Form>
           </form>
 
-          {DEMO_MODE ? (
+          {showTestAccounts ? (
             <div className="mt-8 rounded-lg border border-dashed border-line p-4">
-              <p className="section-title mb-2">Demo accounts</p>
-              <div className="flex flex-col gap-1.5">
-                {DEMO_ACCOUNTS.map((a) => (
+              <p className="section-title mb-1">Test accounts</p>
+              <p className="mb-2 text-xs text-ink-subtle">Click one to fill in the form.</p>
+              <div className="flex flex-col gap-1">
+                {TEST_ACCOUNTS.map((a) => (
                   <button
                     key={a.email}
                     type="button"
-                    className="rounded-md px-2 py-1 text-left text-sm text-brand-700 transition-colors hover:bg-brand-50"
+                    className="rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-brand-50"
                     onClick={() => {
                       setValue('email', a.email, { shouldValidate: true });
                       setValue('password', a.password, { shouldValidate: true });
                     }}
                   >
-                    {a.label}
+                    <span className="block font-medium text-brand-700">{a.label}</span>
+                    <span className="block text-xs text-ink-muted">
+                      {a.email} · {a.password}
+                    </span>
                   </button>
                 ))}
               </div>
