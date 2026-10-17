@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createApp } from '../src/app';
 import {
   loginAdmin,
   loginAuthor1,
@@ -111,5 +112,23 @@ describe('health', () => {
         .get('/health/ready')
         .then((r) => r.status),
     ).toBe(404);
+  });
+});
+
+describe('CORS', () => {
+  const origin = 'http://localhost:3000';
+
+  it('allows the configured web origin', async () => {
+    const res = await request(ctx.app).get('/health').set('Origin', origin);
+    expect(res.headers['access-control-allow-origin']).toBe(origin);
+  });
+
+  it('leaves CORS to the gateway when CORS_HANDLED_BY_PROXY is set', async () => {
+    const app = createApp({
+      ...ctx.container,
+      config: { ...ctx.container.config, corsHandledByProxy: true },
+    });
+    const res = await request(app).get('/health').set('Origin', origin);
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
   });
 });

@@ -27,6 +27,9 @@ const EnvSchema = z
     SESSION_TTL_HOURS: z.coerce.number().min(1).max(72).default(8),
 
     CORS_ORIGINS: z.string().default('http://localhost:3000'),
+    // Set when the host's gateway already adds CORS headers (Zoho Catalyst AppSail does), so
+    // the API doesn't send a second Access-Control-Allow-Origin, which browsers reject.
+    CORS_HANDLED_BY_PROXY: booleanString.default(false),
     COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
     COOKIE_SECURE: booleanString.optional(),
     COOKIE_DOMAIN: z.string().optional(),
@@ -68,6 +71,7 @@ export interface AppConfig {
   jwtSecretIsEphemeral: boolean;
   sessionTtlHours: number;
   corsOrigins: string[];
+  corsHandledByProxy: boolean;
   cookie: { sameSite: 'lax' | 'strict' | 'none'; secure: boolean; domain: string | undefined };
   trustProxy: number;
   ai: {
@@ -126,6 +130,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     corsOrigins: env.CORS_ORIGINS.split(',')
       .map((o) => o.trim().replace(/\/$/, ''))
       .filter(Boolean),
+    corsHandledByProxy: env.CORS_HANDLED_BY_PROXY,
     cookie: {
       sameSite: env.COOKIE_SAMESITE,
       secure: env.COOKIE_SECURE ?? isProduction,

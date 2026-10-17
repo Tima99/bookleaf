@@ -49,16 +49,20 @@ export function createApp(container: Container, options: { rateLimitMultiplier?:
     }),
   );
   app.use(helmet());
-  app.use(
-    cors({
-      origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin)),
-      credentials: true,
-      allowedHeaders: ['Content-Type', CSRF_HEADER, 'X-Request-Id'],
-      exposedHeaders: ['X-Request-Id', 'RateLimit', 'RateLimit-Policy'],
-      methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
-      maxAge: 600,
-    }),
-  );
+  // Behind a gateway that already answers CORS (CORS_HANDLED_BY_PROXY), adding our own
+  // headers would send Access-Control-Allow-Origin twice and the browser would block it.
+  if (!config.corsHandledByProxy) {
+    app.use(
+      cors({
+        origin: (origin, cb) => cb(null, !origin || config.corsOrigins.includes(origin)),
+        credentials: true,
+        allowedHeaders: ['Content-Type', CSRF_HEADER, 'X-Request-Id'],
+        exposedHeaders: ['X-Request-Id', 'RateLimit', 'RateLimit-Policy'],
+        methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+        maxAge: 600,
+      }),
+    );
+  }
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
   app.use(limiters.global);

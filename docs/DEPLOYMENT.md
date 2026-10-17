@@ -21,6 +21,7 @@
 | `JWT_SECRET`                                                    | yes           | ≥ 32 random chars                                                              |
 | `SESSION_TTL_HOURS`                                             | no            | `8`                                                                            |
 | `CORS_ORIGINS`                                                  | yes           | `https://bookleaf-support.vercel.app`                                          |
+| `CORS_HANDLED_BY_PROXY`                                         | no            | `true` on Zoho Catalyst AppSail (its gateway adds CORS headers)                |
 | `COOKIE_SAMESITE`                                               | yes           | `none` when web and API are on different sites; `lax` if on sibling subdomains |
 | `COOKIE_SECURE`                                                 | yes           | `true`                                                                         |
 | `COOKIE_DOMAIN`                                                 | no            | e.g. `.example.com` for sibling subdomains                                     |
@@ -70,6 +71,8 @@ re-running updates authors/books in place and never duplicates tickets or resets
    check triage, generate/edit a draft, send → the author sees it live.
 4. If cookies don't stick across sites, verify `COOKIE_SAMESITE=none`, `COOKIE_SECURE=true`,
    `CORS_ORIGINS` matches the web origin exactly, and `TRUST_PROXY=1`.
+   If the browser reports `Access-Control-Allow-Origin` "contains multiple values", the host
+   already adds CORS headers: set `CORS_HANDLED_BY_PROXY=true`.
 5. Make sure the host doesn't buffer `text/event-stream` (the API sends `X-Accel-Buffering: no`).
 
 ## Scaling notes
