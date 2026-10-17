@@ -1,0 +1,56 @@
+BOOKLEAF AUTHOR SUPPORT PORTAL - BRIEF WRITE-UP
+
+APPROACH AND PRIORITIES
+My primary goal was to build a functional, maintainable support portal that reduces the
+manual effort required to handle author queries while keeping authors informed throughout
+the ticket lifecycle.
+
+I prioritised the core workflow first: author authentication, book and royalty visibility,
+ticket creation, admin ticket management, and responses visible to authors. I designed
+separate author and admin interfaces with role-based access control to ensure authors can
+access only their own information, while administrators can manage tickets across all
+authors.
+
+Once the core workflow was stable, I added AI to reduce manual effort further. Tickets are
+categorised and prioritised automatically, and admins get a suggested reply based only on
+BookLeaf's policies and the author's real book data. Admins review every draft before
+sending and can correct the AI's choices. If the AI is unavailable, keyword rules and
+reply templates take over, so the portal keeps working.
+
+TRADE-OFFS
+- SSE vs WebSockets vs polling: polling alone is simple but either slow or wasteful (most
+  requests return nothing new). WebSockets are two-way, which we don't need, and need their
+  own login and permission handling. Updates only flow server -> browser, so I chose SSE: it
+  runs over plain HTTP with the same login cookie and permission checks, reconnects on its
+  own, and events carry only ticket ids, so no content can leak. Polling every 20 seconds
+  is kept as the fallback if the stream drops. WebSockets would suit two-way chat later.
+- Keyword retrieval vs RAG: the knowledge base is 8 short policy sections, so choosing 1-3
+  by category and keywords is predictable, explainable and free. Embeddings would add
+  infrastructure with no gain at this size.
+- LLM vs a dedicated classifier (e.g. System One JEV) for category and priority: one small
+  LLM call returns both as validated structured output, and fixed rules then raise priority
+  for cases that must never be under-rated (ISBN errors, missing royalties, legal threats).
+  A dedicated classifier would be faster and cheaper, but JEV is still early access.
+- Vercel AI SDK vs the OpenAI/Anthropic SDKs directly: one interface for both providers,
+  with structured output, so switching provider is a setting. Cost: one more dependency,
+  and new provider features arrive later. It sits behind our own interface, so it can be
+  swapped without touching the rest of the code.
+
+HOW I WOULD TAKE IT TO PRODUCTION
+1. Classification with System One JEV: trial it in shadow mode beside the current LLM. Its
+   typed answers with confidence scores fit category and priority, and low-confidence
+   tickets can go to a person. Switch only if it matches accuracy on our own data, and keep
+   LLM + rules as the fallback. Reply drafting stays on an LLM.
+2. RAG with chunking: once the knowledge base grows (full policies, past resolved tickets),
+   split documents into chunks, embed them, and use hybrid vector + keyword search
+   (MongoDB Atlas) so drafts cite the exact passages they used.
+3. Attachments: authors upload documents and images (royalty statements, print-defect
+   photos) straight to file storage such as S3, never into the database. Each file is
+   scanned for viruses, and its text is extracted so AI triage and drafts can use it.
+4. Notifications: authors get an email (or WhatsApp) when the team replies or a ticket's
+   status changes, plus an in-app bell with unread counts. Admins are alerted to new
+   critical tickets. Each person chooses their channels, and frequent
+   updates are grouped into a digest so nobody gets spammed.
+5. Scale and reliability: a job queue with retries for slow work (AI triage, drafts,
+   notifications), Redis so live updates and rate limits work across servers, and a
+   MongoDB replica set with transactions.
