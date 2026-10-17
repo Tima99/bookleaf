@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Internal workspace packages ship TypeScript source.
   transpilePackages: ['@bookleaf/contracts', '@bookleaf/utils'],
+  // Zoho Catalyst Slate returns 500 for the /_next/image optimizer, so images are served
+  // as-is. Keep them pre-compressed (e.g. WebP) in src/assets.
+  images: { unoptimized: true },
   async headers() {
     return [
       {

@@ -32,6 +32,7 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showHeroImage, setShowHeroImage] = useState(true);
   const showTestAccounts = params.get('test-creds') === '1';
 
   const { control, handleSubmit, setValue, formState } = useForm<LoginRequest>({
@@ -67,13 +68,16 @@ function LoginForm() {
               BookLeaf team — all in one place.
             </p>
           </div>
-          <Image
-            src={sharkTankIndia}
-            alt="BookLeaf Publishing's founders pitching on Shark Tank India"
-            sizes="(min-width: 1024px) 48vw, 100vw"
-            placeholder="blur"
-            className="mt-10 h-auto w-full rounded-xl shadow-lg ring-1 ring-black/5"
-          />
+          {/* Presentation only: if it fails to load, drop it rather than show a broken image. */}
+          {showHeroImage ? (
+            <Image
+              src={sharkTankIndia}
+              alt="BookLeaf Publishing's founders pitching on Shark Tank India"
+              placeholder="blur"
+              onError={() => setShowHeroImage(false)}
+              className="mt-10 h-auto w-full rounded-xl shadow-lg ring-1 ring-black/5"
+            />
+          ) : null}
         </div>
         <p className="relative z-10 text-xs text-ink-subtle">
           BookLeaf Publishing · India &amp; US
