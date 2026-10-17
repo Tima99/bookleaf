@@ -1,0 +1,1512 @@
+{
+  "info": {
+    "name": "BookLeaf Author Support API",
+    "description": "REST API for the BookLeaf Author Support & Communication Portal.\n\n## Getting started\n1. Check the collection **Variables** tab. `BASE_URL` defaults to local; set it to `https://api.bookleaf.code26.site` for production.\n2. Run **Auth → Login as Author** or **Auth → Login as Admin**.\n3. Call requests in that role’s folder. Ids are saved into variables as you go.\n\n## Authentication\nLogin sets the HTTP-only `bl_session` cookie (Postman sends it automatically) and returns a `csrfToken`, saved to `CSRF_TOKEN`. Every POST/PATCH under a session sends it in the `X-CSRF-Token` header. A missing or wrong token returns `403 CSRF_TOKEN_INVALID`.\n\n## Responses\n- Success: `{ \"success\": true, \"data\": ... }`; paginated lists add `meta: { page, pageSize, total, totalPages }`\n- Error: `{ \"success\": false, \"error\": { \"code\", \"message\", \"details?\", \"requestId\" } }`\n\nError codes: `VALIDATION_ERROR`, `UNAUTHENTICATED`, `INVALID_CREDENTIALS`, `SESSION_EXPIRED`, `CSRF_TOKEN_INVALID`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `INVALID_STATE_TRANSITION`, `RATE_LIMITED`, `AI_UNAVAILABLE`, `PAYLOAD_TOO_LARGE`, `INTERNAL_ERROR`, `SERVICE_UNAVAILABLE`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "description": "Public routes with no session. Use `/health` for uptime monitors.",
+      "item": [
+        {
+          "name": "Home",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/",
+              "host": ["{{BASE_URL}}"],
+              "path": []
+            },
+            "description": "Landing response with the API name, version and links to `/health` and `/api/v1`."
+          }
+        },
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/health",
+              "host": ["{{BASE_URL}}"],
+              "path": ["health"]
+            },
+            "description": "Returns **200** `{\"status\":\"ok\"}` when the server and MongoDB are both up, and **503** `{\"status\":\"degraded\"}` otherwise. The response includes `uptimeSeconds`, `database.connected`, `database.state` and `timestamp`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('API and database are up', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "description": "Login sets the HTTP-only `bl_session` cookie, which Postman stores and sends automatically, and returns a `csrfToken`. The login scripts save that token to `CSRF_TOKEN`.\n\nThere is **one session at a time** per `BASE_URL`, because both roles use the same cookie. Run **Login as Author** before the Author folder and **Login as Admin** before the Admin folder.\n\nLogin is rate-limited. Repeated failures return `429 RATE_LIMITED`.",
+      "item": [
+        {
+          "name": "Login as Author",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/{{API_VERSION}}/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "{{API_VERSION}}", "auth", "login"]
+            },
+            "description": "Signs in with `AUTHOR_EMAIL` / `AUTHOR_PASSWORD` and saves `CSRF_TOKEN`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{AUTHOR_EMAIL}}\",\n  \"password\": \"{{AUTHOR_PASSWORD}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const store = pm.collectionVariables;",
+                  "pm.test('Signed in', () => pm.response.to.have.status(200));",
+                  "const { data } = pm.response.json();",
+                  "store.set('CSRF_TOKEN', data.csrfToken);",
+                  "console.log('Signed in as AUTHOR:', data.user.email);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login as Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/{{API_VERSION}}/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "{{API_VERSION}}", "auth", "login"]
+            },
+            "description": "Signs in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` and saves `CSRF_TOKEN` and `ADMIN_USER_ID`, which the assign request uses.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{ADMIN_EMAIL}}\",\n  \"password\": \"{{ADMIN_PASSWORD}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const store = pm.collectionVariables;",
+                  "pm.test('Signed in', () => pm.response.to.have.status(200));",
+                  "const { data } = pm.response.json();",
+                  "store.set('CSRF_TOKEN', data.csrfToken);",
+                  "store.set('ADMIN_USER_ID', data.user.id);",
+                  "console.log('Signed in as ADMIN:', data.user.email);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Current session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/{{API_VERSION}}/auth/me",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "{{API_VERSION}}", "auth", "me"]
+            },
+            "description": "Returns the signed-in user, a fresh `csrfToken` and `expiresAt`, and saves the token again. Returns `401` without a session."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const store = pm.collectionVariables;",
+                  "if (pm.response.code === 200) store.set('CSRF_TOKEN', pm.response.json().data.csrfToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/{{API_VERSION}}/auth/logout",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "{{API_VERSION}}", "auth", "logout"]
+            },
+            "description": "Clears the session cookie. Works even when the session has already expired."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["const store = pm.collectionVariables;", "store.set('CSRF_TOKEN', '');"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Author",
+      "description": "Requires **Login as Author**. Admin sessions get `403 FORBIDDEN` here.",
+      "item": [
+        {
+          "name": "Profile & Books",
+          "description": "Scoped to the signed-in author. The author comes from the session, never from the request.",
+          "item": [
+            {
+              "name": "My profile",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/authors/me",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "authors", "me"]
+                },
+                "description": "Author code, name, email, phone, city and joined date."
+              }
+            },
+            {
+              "name": "My dashboard",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/authors/me/dashboard",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "authors", "me", "dashboard"]
+                },
+                "description": "Totals for books, copies sold, royalties earned/paid/pending and open tickets, plus the royalty payout calendar and a short book list."
+              }
+            },
+            {
+              "name": "List my books",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/authors/me/books",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "authors", "me", "books"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number, starting at 1 (default 1).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20",
+                      "description": "Items per page, 1 to 100 (default 20).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "description": "Search by title, book code or ISBN (max 100 chars).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "stage",
+                      "value": "PUBLISHED",
+                      "description": "`PUBLISHED` or `IN_PRODUCTION`.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Paginated. Saves the first book code to `BOOK_CODE` if it is empty."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const json = pm.response.json();",
+                      "const first = Array.isArray(json.data) ? json.data[0] : undefined;",
+                      "if (first && !store.get('BOOK_CODE')) store.set('BOOK_CODE', first.bookCode);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get my book",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/authors/me/books/{{BOOK_CODE}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "authors", "me", "books", "{{BOOK_CODE}}"]
+                },
+                "description": "One book by its book code, such as `BK001`. Returns `404` for books that belong to another author."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tickets",
+          "description": "Tickets raised by the signed-in author. Authors only ever see the public conversation, never internal notes.",
+          "item": [
+            {
+              "name": "Create ticket",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/tickets",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "tickets"]
+                },
+                "description": "Creates a ticket and saves its id to `TICKET_ID`. AI triage runs in the background, so creation never waits on the AI.\n\n- `bookId`: a book code such as `BK001`, or `null` for a general/account-level question\n- `subject`: 5 to 150 characters\n- `description`: 20 to 5000 characters\n\nRate-limited per author.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"bookId\": \"{{BOOK_CODE}}\",\n  \"subject\": \"Royalty for last quarter not received\",\n  \"description\": \"My royalty statement shows a pending amount for last quarter, but nothing has reached my bank account yet. Could you check the payout status?\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "pm.test('Ticket created', () => pm.response.to.have.status(201));",
+                      "store.set('TICKET_ID', pm.response.json().data.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List my tickets",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/tickets/mine",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "tickets", "mine"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number, starting at 1 (default 1).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20",
+                      "description": "Items per page, 1 to 100 (default 20).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "OPEN,IN_PROGRESS",
+                      "description": "Comma-separated: `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "description": "Subject or ticket reference such as `BL-1001`.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Paginated. Saves the first ticket id to `TICKET_ID` if it is empty."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const json = pm.response.json();",
+                      "const first = Array.isArray(json.data) ? json.data[0] : undefined;",
+                      "if (first && !store.get('TICKET_ID')) store.set('TICKET_ID', first.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get my ticket",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/tickets/mine/{{TICKET_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "tickets", "mine", "{{TICKET_ID}}"]
+                },
+                "description": "Ticket detail with the public conversation and `canReply`. Returns `404` for tickets that belong to another author."
+              }
+            },
+            {
+              "name": "Reply to my ticket",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/tickets/mine/{{TICKET_ID}}/messages",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "tickets", "mine", "{{TICKET_ID}}", "messages"]
+                },
+                "description": "Adds a follow-up message (1 to 10000 characters). A reply on a `RESOLVED` ticket re-opens it; a `CLOSED` ticket returns `409`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"body\": \"Thanks. Just checking whether there is an update on this.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "My ticket events (SSE)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "text/event-stream"
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/tickets/mine/events",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "tickets", "mine", "events"]
+                },
+                "description": "Server-Sent Events stream of the author’s own ticket events. Events carry ids only; fetch the ticket for details. The connection stays open, so stop it manually."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "description": "Requires **Login as Admin**. Author sessions get `403 FORBIDDEN` here.",
+      "item": [
+        {
+          "name": "Dashboard & Directory",
+          "description": "Operations dashboard, author directory and the admin user list.",
+          "item": [
+            {
+              "name": "Dashboard",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/dashboard",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "dashboard"]
+                },
+                "description": "Ticket counts by status and urgency, average first-response time, unresolved tickets by category, the needs-attention list, recent activity and AI usage over the last 24 hours."
+              }
+            },
+            {
+              "name": "List authors",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/authors",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "authors"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number, starting at 1 (default 1).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20",
+                      "description": "Items per page, 1 to 100 (default 20).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "description": "Name, email or author code (max 100 chars).",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Paginated author directory with book and open-ticket counts. Saves the first author id to `AUTHOR_ID` if it is empty."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const json = pm.response.json();",
+                      "const first = Array.isArray(json.data) ? json.data[0] : undefined;",
+                      "if (first && !store.get('AUTHOR_ID')) store.set('AUTHOR_ID', first.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get author",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/authors/{{AUTHOR_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "authors", "{{AUTHOR_ID}}"]
+                },
+                "description": "Author profile with their books, tickets and royalty totals."
+              }
+            },
+            {
+              "name": "List admin users",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/users",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "users"]
+                },
+                "description": "Active admins, used by the assignee picker. Saves the first id to `ADMIN_USER_ID` if it is empty."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const first = pm.response.json().data[0];",
+                      "if (first && !store.get('ADMIN_USER_ID')) store.set('ADMIN_USER_ID', first.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "All ticket events (SSE)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "text/event-stream"
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/events",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "events"]
+                },
+                "description": "Server-Sent Events stream of every ticket event. The connection stays open, so stop it manually."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tickets",
+          "description": "The operations queue and ticket workspace.\n\nAllowed status changes: `OPEN` → `IN_PROGRESS`/`RESOLVED`/`CLOSED`; `IN_PROGRESS` → `OPEN`/`RESOLVED`/`CLOSED`; `RESOLVED` → `IN_PROGRESS`/`CLOSED`; `CLOSED` → `IN_PROGRESS`. Any other change returns `409 INVALID_STATE_TRANSITION`.",
+          "item": [
+            {
+              "name": "Ticket queue",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "tickets"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number, starting at 1 (default 1).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20",
+                      "description": "Items per page, 1 to 100 (default 20).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "search",
+                      "value": "",
+                      "description": "Subject, author name/email/code or reference such as `BL-1001`.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "OPEN,IN_PROGRESS",
+                      "description": "Comma-separated: `OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "category",
+                      "value": "ROYALTY_PAYMENTS",
+                      "description": "Comma-separated: `ROYALTY_PAYMENTS`, `ISBN_METADATA`, `PRINTING_QUALITY`, `DISTRIBUTION_AVAILABILITY`, `BOOK_STATUS_PRODUCTION`, `GENERAL_INQUIRY`.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "priority",
+                      "value": "CRITICAL,HIGH",
+                      "description": "Comma-separated: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "assignee",
+                      "value": "me",
+                      "description": "`me`, `unassigned` or an admin user id.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "authorId",
+                      "value": "{{AUTHOR_ID}}",
+                      "description": "Only this author’s tickets.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "createdFrom",
+                      "value": "2026-01-01",
+                      "description": "Created on or after this date (YYYY-MM-DD).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "createdTo",
+                      "value": "2026-12-31",
+                      "description": "Created on or before this date (YYYY-MM-DD, inclusive).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "sort",
+                      "value": "urgency",
+                      "description": "`urgency` (default), `newest`, `oldest`, `updated` or `priority`.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Paginated queue with server-side filtering and sorting (default sort: `urgency`). Saves the first ticket id to `TICKET_ID`, replacing any earlier value."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const json = pm.response.json();",
+                      "const first = Array.isArray(json.data) ? json.data[0] : undefined;",
+                      "if (first) store.set('TICKET_ID', first.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get ticket",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "tickets", "{{TICKET_ID}}"]
+                },
+                "description": "Full workspace data: description, author profile, book detail, triage result, messages, internal notes, activity, the cached AI draft and `allowedTransitions`."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const draft = pm.response.json().data.draft;",
+                      "if (draft) store.set('DRAFT_ID', draft.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Update status",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "tickets", "{{TICKET_ID}}"]
+                },
+                "description": "Changes the status. Must be an allowed transition (see folder description).",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Override category & priority",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "tickets", "{{TICKET_ID}}"]
+                },
+                "description": "Sets the category and/or priority by hand. Admin overrides are never replaced by later AI runs. Send at least one of `status`, `category` or `priority`; other fields are rejected.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"category\": \"ROYALTY_PAYMENTS\",\n  \"priority\": \"HIGH\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Assign ticket",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}/assign",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "tickets", "{{TICKET_ID}}", "assign"]
+                },
+                "description": "Assigns the ticket to the admin in `ADMIN_USER_ID`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"assigneeId\": \"{{ADMIN_USER_ID}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Unassign ticket",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}/assign",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "tickets", "{{TICKET_ID}}", "assign"]
+                },
+                "description": "Removes the assignee.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"assigneeId\": null\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Add internal note",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}/notes",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "tickets", "{{TICKET_ID}}", "notes"]
+                },
+                "description": "Internal note for the team (1 to 5000 characters). Never visible to authors.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"body\": \"Checked with finance: payout batch scheduled for Friday.\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Send response",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}/responses",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "tickets",
+                    "{{TICKET_ID}}",
+                    "responses"
+                  ]
+                },
+                "description": "Sends a public reply to the author (1 to 10000 characters).\n\n- `statusAfter`: `IN_PROGRESS` or `RESOLVED` (optional; defaults to `IN_PROGRESS` for open tickets)\n- `draftId`: the AI draft the reply started from, or `null`. It records whether the reply was manual, an edited draft or an unedited draft.\n\nReturns `409` when the ticket is `CLOSED`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"body\": \"Hi, thanks for flagging this. Your payout is scheduled for this Friday, and you will get a confirmation email once it is sent.\",\n  \"statusAfter\": \"RESOLVED\",\n  \"draftId\": \"{{DRAFT_ID}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Re-run AI triage",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}/ai/classify",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "tickets",
+                    "{{TICKET_ID}}",
+                    "ai",
+                    "classify"
+                  ]
+                },
+                "description": "Runs classification and priority scoring again. Falls back to keyword rules when AI is unavailable, and keeps admin overrides. AI rate limit applies."
+              }
+            },
+            {
+              "name": "Get or generate AI draft",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}/ai/draft",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "tickets",
+                    "{{TICKET_ID}}",
+                    "ai",
+                    "draft"
+                  ]
+                },
+                "description": "Returns the cached draft, or generates one. When AI is unavailable, returns a policy template and a `failure` object, so admins can still reply. Saves `DRAFT_ID`. AI rate limit applies.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"force\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const draft = pm.response.json().data.draft;",
+                      "if (draft) store.set('DRAFT_ID', draft.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Regenerate AI draft",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/tickets/{{TICKET_ID}}/ai/draft",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "tickets",
+                    "{{TICKET_ID}}",
+                    "ai",
+                    "draft"
+                  ]
+                },
+                "description": "Skips the cached draft and calls the model again. Saves `DRAFT_ID`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"force\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const draft = pm.response.json().data.draft;",
+                      "if (draft) store.set('DRAFT_ID', draft.id);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "AI Configuration",
+          "description": "AI status, knowledge base, run log and versioned strategies.\n\nStrategy kinds: `CLASSIFICATION` (global, `category` must be `null`), `PRIORITY` and `RESPONSE` (both need a `category`). Every config save creates a new immutable version.",
+          "item": [
+            {
+              "name": "AI status",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/status",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "status"]
+                },
+                "description": "Whether a provider is configured, the default models for triage and drafting, circuit-breaker state and usage over the last 24 hours."
+              }
+            },
+            {
+              "name": "Knowledge base",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/knowledge-base",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "knowledge-base"]
+                },
+                "description": "The knowledge-base sections the AI uses to ground drafts."
+              }
+            },
+            {
+              "name": "AI run log",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/runs",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "runs"],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "description": "Page number, starting at 1 (default 1).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "pageSize",
+                      "value": "20",
+                      "description": "Items per page, 1 to 100 (default 20).",
+                      "disabled": true
+                    },
+                    {
+                      "key": "strategyId",
+                      "value": "{{STRATEGY_ID}}",
+                      "description": "Only runs of this strategy.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "status",
+                      "value": "FAILED",
+                      "description": "`SUCCESS` or `FAILED`.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "Paginated log of AI calls with latency, token usage and failures."
+              }
+            },
+            {
+              "name": "List strategies",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "strategies"],
+                  "query": [
+                    {
+                      "key": "kind",
+                      "value": "RESPONSE",
+                      "description": "`CLASSIFICATION`, `PRIORITY` or `RESPONSE`.",
+                      "disabled": true
+                    },
+                    {
+                      "key": "category",
+                      "value": "ROYALTY_PAYMENTS",
+                      "description": "A ticket category.",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "description": "All strategies with their active config and run stats. Saves the first id to `STRATEGY_ID` if it is empty."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "const json = pm.response.json();",
+                      "const first = Array.isArray(json.data) ? json.data[0] : undefined;",
+                      "if (first && !store.get('STRATEGY_ID')) store.set('STRATEGY_ID', first.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Create strategy",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "strategies"]
+                },
+                "description": "Creates a strategy at version 1 and saves its id to `STRATEGY_ID`. Returns `409` if one already exists for that kind and category.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Royalty response drafts\",\n  \"purpose\": \"Drafts replies for royalty and payment questions.\",\n  \"enabled\": true,\n  \"kind\": \"RESPONSE\",\n  \"category\": \"ROYALTY_PAYMENTS\",\n  \"config\": {\n    \"instructions\": \"You are a BookLeaf support specialist. Classify the ticket into exactly one category and explain why in one sentence.\",\n    \"categoryInstructions\": \"\",\n    \"tone\": \"Warm, clear and concise.\",\n    \"priorityRules\": [],\n    \"floorRules\": [],\n    \"knowledgeSections\": [\n      \"royalty-policy\",\n      \"communication-tone\"\n    ],\n    \"provider\": \"openai\",\n    \"model\": \"\",\n    \"temperature\": null,\n    \"maxOutputTokens\": 700,\n    \"includeExamples\": true,\n    \"maxHistoryMessages\": 6\n  },\n  \"changeNote\": \"Initial version\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const store = pm.collectionVariables;",
+                      "if (pm.response.code === 201) store.set('STRATEGY_ID', pm.response.json().data.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get strategy",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "strategies", "{{STRATEGY_ID}}"]
+                },
+                "description": "One strategy with its active config and run stats."
+              }
+            },
+            {
+              "name": "Update strategy",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "strategies", "{{STRATEGY_ID}}"]
+                },
+                "description": "Updates the name, purpose or enabled flag. Sending `config` saves a new version, which becomes active unless `activate` is `false`.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"enabled\": true,\n  \"config\": {\n    \"instructions\": \"You are a BookLeaf support specialist. Classify the ticket into exactly one category and explain why in one sentence.\",\n    \"categoryInstructions\": \"\",\n    \"tone\": \"Warm, clear and concise.\",\n    \"priorityRules\": [],\n    \"floorRules\": [],\n    \"knowledgeSections\": [\n      \"company-overview\"\n    ],\n    \"provider\": \"openai\",\n    \"model\": \"\",\n    \"temperature\": null,\n    \"maxOutputTokens\": 700,\n    \"includeExamples\": true,\n    \"maxHistoryMessages\": 6\n  },\n  \"changeNote\": \"Tightened the instructions\",\n  \"activate\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Enable or disable strategy",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}",
+                  "host": ["{{BASE_URL}}"],
+                  "path": ["api", "{{API_VERSION}}", "admin", "ai", "strategies", "{{STRATEGY_ID}}"]
+                },
+                "description": "Changes only the enabled flag; no new version is created.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"enabled\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Version history",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}/versions",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "ai",
+                    "strategies",
+                    "{{STRATEGY_ID}}",
+                    "versions"
+                  ]
+                },
+                "description": "Every saved version, with change notes and which one is active."
+              }
+            },
+            {
+              "name": "Activate version",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}/activate",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "ai",
+                    "strategies",
+                    "{{STRATEGY_ID}}",
+                    "activate"
+                  ]
+                },
+                "description": "Activates a specific version, which also rolls back to an older one.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"version\": 1\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Duplicate strategy",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}/duplicate",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "ai",
+                    "strategies",
+                    "{{STRATEGY_ID}}",
+                    "duplicate"
+                  ]
+                },
+                "description": "Copies the strategy. The copy is created disabled."
+              }
+            },
+            {
+              "name": "Test strategy (prompt preview)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}/test",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "ai",
+                    "strategies",
+                    "{{STRATEGY_ID}}",
+                    "test"
+                  ]
+                },
+                "description": "With `dryRun: true`, only builds and returns the prompt and a token estimate; the model is not called.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subject\": \"Royalty not received\",\n  \"description\": \"My last royalty payout has not arrived in my bank account yet.\",\n  \"bookId\": \"{{BOOK_CODE}}\",\n  \"dryRun\": true\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "Test strategy (live run)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "X-CSRF-Token",
+                    "value": "{{CSRF_TOKEN}}",
+                    "description": "Saved by the login requests. Required on every POST/PATCH under a session."
+                  }
+                ],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/{{API_VERSION}}/admin/ai/strategies/{{STRATEGY_ID}}/test",
+                  "host": ["{{BASE_URL}}"],
+                  "path": [
+                    "api",
+                    "{{API_VERSION}}",
+                    "admin",
+                    "ai",
+                    "strategies",
+                    "{{STRATEGY_ID}}",
+                    "test"
+                  ]
+                },
+                "description": "Runs the strategy on a sample ticket and calls the model. Add `version` to test a version other than the active one. AI rate limit applies.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"subject\": \"Royalty not received\",\n  \"description\": \"My last royalty payout has not arrived in my bank account yet.\",\n  \"bookId\": \"{{BOOK_CODE}}\",\n  \"dryRun\": false\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:4000",
+      "description": "API origin. Production: https://api.bookleaf.code26.site"
+    },
+    {
+      "key": "API_VERSION",
+      "value": "v1"
+    },
+    {
+      "key": "AUTHOR_EMAIL",
+      "value": "priya.sharma@email.com"
+    },
+    {
+      "key": "AUTHOR_PASSWORD",
+      "value": "Author@2026"
+    },
+    {
+      "key": "ADMIN_EMAIL",
+      "value": "support.lead@bookleaf.test"
+    },
+    {
+      "key": "ADMIN_PASSWORD",
+      "value": "Admin@2026"
+    },
+    {
+      "key": "CSRF_TOKEN",
+      "value": "",
+      "description": "Saved by the login requests."
+    },
+    {
+      "key": "ADMIN_USER_ID",
+      "value": "",
+      "description": "Saved by Login as Admin or List admin users."
+    },
+    {
+      "key": "AUTHOR_ID",
+      "value": "",
+      "description": "Saved by List authors."
+    },
+    {
+      "key": "BOOK_CODE",
+      "value": "BK001",
+      "description": "Saved by List my books when empty."
+    },
+    {
+      "key": "TICKET_ID",
+      "value": "",
+      "description": "Saved by Create ticket, List my tickets or Ticket queue."
+    },
+    {
+      "key": "DRAFT_ID",
+      "value": "",
+      "description": "Saved by the AI draft requests."
+    },
+    {
+      "key": "STRATEGY_ID",
+      "value": "",
+      "description": "Saved by List strategies or Create strategy."
+    }
+  ]
+}

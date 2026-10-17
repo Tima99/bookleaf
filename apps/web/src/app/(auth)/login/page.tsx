@@ -70,8 +70,8 @@ function LoginForm() {
         {/* Soft pink "clouds" and wave, after the bookleafpub.in hero. */}
         <div className="pointer-events-none absolute top-24 -right-10 h-24 w-56 rounded-full bg-brand-100 blur-sm" />
         <div className="pointer-events-none absolute top-36 right-32 h-14 w-32 rounded-full bg-brand-100/80 blur-sm" />
-        <div className="pointer-events-none absolute -right-32 -bottom-40 h-[28rem] w-[28rem] rounded-full bg-brand-200/70" />
-        <div className="pointer-events-none absolute -bottom-24 left-10 h-56 w-[36rem] rounded-[50%] bg-brand-100/80" />
+        <div className="pointer-events-none absolute -right-32 -bottom-40 h-112 w-md rounded-full bg-brand-200/70" />
+        <div className="pointer-events-none absolute -bottom-24 left-10 h-56 w-xl rounded-[50%] bg-brand-100/80" />
       </aside>
 
       <main className="flex items-center justify-center px-4 py-12 sm:px-8">
