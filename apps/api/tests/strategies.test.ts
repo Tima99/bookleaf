@@ -1,4 +1,6 @@
+import type { Types } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AiStrategyModel, AiStrategyVersionModel } from '../src/database/models';
 import { loginAdmin, startTestApp, type Session, type TestContext } from './helpers/test-app';
 
 let ctx: TestContext;
@@ -122,5 +124,85 @@ describe('AI strategies', () => {
     const res = await admin.get('/api/v1/admin/ai/status');
     expect(res.status).toBe(200);
     expect(JSON.stringify(res.body)).not.toMatch(/api[_-]?key/i);
+  });
+
+  it('keeps the Category and Priority rules on the Category & Priority setting', async () => {
+    const sorting = await admin.get('/api/v1/admin/ai/strategies?kind=CLASSIFICATION');
+    const config = sorting.body.data[0].config;
+    expect(config.sortingRules.length).toBeGreaterThan(0);
+    expect(config.urgencyRules).toContainEqual({
+      description: 'Author says royalty money was sent to the wrong bank account',
+      priority: 'CRITICAL',
+    });
+    const urgency = await admin.get('/api/v1/admin/ai/strategies?kind=PRIORITY');
+    expect(
+      (urgency.body.data as Array<{ config: { priorityRules: string[] } }>).every(
+        (s) => s.config.priorityRules.length === 0,
+      ),
+    ).toBe(true);
+  });
+
+  it('moves old free-text urgency guidance into the Priority rules once', async () => {
+    // Recreate a database from before the rules lists: guidance as text on urgency settings.
+    const sorting = await AiStrategyModel.findOne({ kind: 'CLASSIFICATION', enabled: true });
+    const royalty = await AiStrategyModel.findOne({
+      kind: 'PRIORITY',
+      category: 'ROYALTY_PAYMENTS',
+      enabled: true,
+    });
+    if (!sorting || !royalty) throw new Error('missing default settings');
+    const setActiveConfig = async (id: Types.ObjectId, version: number, patch: object) => {
+      const v = await AiStrategyVersionModel.findOne({ strategy: id, version }).lean();
+      await AiStrategyVersionModel.updateOne(
+        { strategy: id, version },
+        { $set: { config: { ...(v?.config as object), ...patch } } },
+      );
+    };
+    await setActiveConfig(sorting._id, sorting.activeVersion, {
+      sortingRules: [],
+      urgencyRules: [],
+    });
+    await AiStrategyModel.updateOne(
+      { _id: sorting._id },
+      { $set: { name: 'Sorting tickets into categories' } },
+    );
+    await setActiveConfig(royalty._id, royalty.activeVersion, {
+      priorityRules: ['Old built-in wording → HIGH'],
+    });
+
+    const isbn = await admin.get(
+      '/api/v1/admin/ai/strategies?kind=PRIORITY&category=ISBN_METADATA',
+    );
+    const isbnRow = (isbn.body.data as StrategyRow[]).find((s) => s.enabled);
+    if (!isbnRow) throw new Error('missing ISBN urgency setting');
+    await admin.patch(`/api/v1/admin/ai/strategies/${isbnRow.id}`, {
+      config: {
+        ...isbnRow.config,
+        priorityRules: ['Edited by staff → CRITICAL', 'No level given'],
+      },
+    });
+
+    await ctx.container.strategies.ensureDefaults();
+    await ctx.container.strategies.ensureDefaults(); // second run must change nothing
+
+    const after = await admin.get('/api/v1/admin/ai/strategies?kind=CLASSIFICATION');
+    expect(after.body.data[0].name).toBe('Category & Priority'); // untouched old name updated
+    const rules = after.body.data[0].config.urgencyRules as Array<{ description: string }>;
+    // Untouched default text becomes the built-in rules; edited text is kept word for word.
+    expect(rules).toContainEqual({
+      description: 'Author says royalty money was sent to the wrong bank account',
+      priority: 'CRITICAL',
+    });
+    expect(rules).toContainEqual({ description: 'Edited by staff', priority: 'CRITICAL' });
+    expect(rules).toContainEqual({ description: 'No level given', priority: 'MEDIUM' });
+    expect(rules.filter((r) => r.description === 'Edited by staff')).toHaveLength(1);
+    expect(after.body.data[0].config.sortingRules.length).toBeGreaterThan(0);
+
+    const urgency = await admin.get('/api/v1/admin/ai/strategies?kind=PRIORITY');
+    expect(
+      (urgency.body.data as Array<{ config: { priorityRules: string[] } }>).every(
+        (s) => s.config.priorityRules.length === 0,
+      ),
+    ).toBe(true);
   });
 });

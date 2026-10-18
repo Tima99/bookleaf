@@ -103,6 +103,11 @@ describe('prompt composition', () => {
     });
     expect(p.system).toContain('ROYALTY_PAYMENTS');
     expect(p.system).toContain('Priority levels');
+    // Rules from the AI settings Category and Priority tabs reach the model.
+    expect(p.system).toContain('Category rules from the BookLeaf team');
+    expect(p.system).toContain(
+      '- Author says royalty money was sent to the wrong bank account → CRITICAL',
+    );
     expect(p.prompt).not.toContain('<knowledge_base>');
   });
 

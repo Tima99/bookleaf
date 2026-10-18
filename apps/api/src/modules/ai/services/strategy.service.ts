@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Types } from 'mongoose';
 import {
   AiStrategyConfigSchema,
+  RULE_LIMITS,
   TICKET_CATEGORIES,
   type AiStrategyConfig,
   type AiStrategyDto,
@@ -9,7 +10,9 @@ import {
   type AiStrategyVersionDto,
   type CreateStrategyRequest,
   type TicketCategory,
+  type TicketPriority,
   type UpdateStrategyRequest,
+  type UrgencyRule,
 } from '@bookleaf/contracts';
 import { ConflictError, NotFoundError, ValidationError } from '../../../common/errors';
 import type { AuthUser } from '../../../common/auth-user';
@@ -22,9 +25,26 @@ import {
 } from '../../../database/models';
 import { actorFrom, type AuditService } from '../../audit/audit.service';
 import type { ResolvedStrategy } from '../prompts/types';
-import { buildDefaultStrategies, type DefaultStrategy } from '../strategies/defaults';
+import {
+  buildDefaultStrategies,
+  DEFAULT_SORTING_RULES,
+  defaultUrgencyRules,
+  type DefaultStrategy,
+} from '../strategies/defaults';
 
 const CACHE_TTL_MS = 30_000;
+
+const LEVEL_IN_TEXT = /\s*→\s*(CRITICAL|HIGH|MEDIUM|LOW)\b\.?/i;
+
+/** Old free-text urgency guidance ("… → HIGH") as one rule, keeping the wording. */
+function toUrgencyRule(text: string): UrgencyRule {
+  const level = text.match(LEVEL_IN_TEXT)?.[1]?.toUpperCase() as TicketPriority | undefined;
+  const description = text.replace(LEVEL_IN_TEXT, '').trim() || text.trim();
+  return {
+    description: description.slice(0, RULE_LIMITS.descriptionMax),
+    priority: level ?? 'MEDIUM',
+  };
+}
 
 function isDuplicateKey(err: unknown): boolean {
   return (
@@ -136,14 +156,14 @@ export class StrategyService {
     for (const def of this.defaults) {
       const exists = await AiStrategyModel.exists({ key: def.key });
       if (exists) {
-        // Plain-language names replaced the original technical ones; only untouched names move.
+        // Built-in names have changed over time; only names nobody edited are updated.
         if (def.legacy) {
           const renamed = await AiStrategyModel.updateOne(
-            { key: def.key, isDefault: true, name: def.legacy.name },
+            { key: def.key, isDefault: true, name: { $in: def.legacy.names } },
             { $set: { name: def.name } },
           );
           const described = await AiStrategyModel.updateOne(
-            { key: def.key, isDefault: true, purpose: def.legacy.purpose },
+            { key: def.key, isDefault: true, purpose: { $in: def.legacy.purposes } },
             { $set: { purpose: def.purpose } },
           );
           if (renamed.modifiedCount || described.modifiedCount) this.invalidate();
@@ -154,7 +174,89 @@ export class StrategyService {
       created += 1;
     }
     if (created) this.invalidate();
+    await this.moveUrgencyGuidance();
     return { created };
+  }
+
+  /**
+   * One-time move. Urgency guidance used to be free text on each category's urgency
+   * setting; it now lives as rules on the Category & Priority setting (its Priority tab),
+   * so staff see everything AI follows in one list. Untouched defaults become the built-in
+   * rules; edited text is kept word for word. Runs only while some urgency setting still
+   * has text, so it is idempotent. Old versions stay in History.
+   */
+  private async moveUrgencyGuidance(): Promise<void> {
+    const sorting = await AiStrategyModel.findOne({
+      kind: 'CLASSIFICATION',
+      category: null,
+      enabled: true,
+    }).lean();
+    if (!sorting) return;
+
+    const moved: UrgencyRule[] = [];
+    const cleared: Array<{ strategy: AiStrategyDoc; config: AiStrategyConfig }> = [];
+    for (const strategy of await AiStrategyModel.find({ kind: 'PRIORITY', enabled: true }).lean()) {
+      const config = await this.activeConfig(strategy);
+      if (!config?.priorityRules.length) continue;
+      const untouched = strategy.isDefault && strategy.activeVersion === 1;
+      moved.push(
+        ...(untouched && strategy.category
+          ? defaultUrgencyRules(strategy.category)
+          : config.priorityRules.map(toUrgencyRule)),
+      );
+      cleared.push({ strategy, config: { ...config, priorityRules: [] } });
+    }
+    if (!cleared.length) return;
+
+    const sortingConfig = await this.activeConfig(sorting);
+    if (!sortingConfig) return;
+    const sortingUntouched = sorting.isDefault && sorting.activeVersion === 1;
+    const note = 'Moved urgency guidance into the Priority rules list';
+    await this.saveSystemVersion(
+      sorting,
+      {
+        ...sortingConfig,
+        sortingRules:
+          sortingUntouched && !sortingConfig.sortingRules.length
+            ? DEFAULT_SORTING_RULES
+            : sortingConfig.sortingRules,
+        urgencyRules: [...sortingConfig.urgencyRules, ...moved].slice(0, RULE_LIMITS.rulesMax),
+      },
+      note,
+    );
+    for (const { strategy, config } of cleared) {
+      await this.saveSystemVersion(strategy, config, note);
+    }
+    this.invalidate();
+  }
+
+  private async activeConfig(strategy: AiStrategyDoc): Promise<AiStrategyConfig | null> {
+    const version = await AiStrategyVersionModel.findOne({
+      strategy: strategy._id,
+      version: strategy.activeVersion,
+    }).lean();
+    return version ? AiStrategyConfigSchema.parse(version.config) : null;
+  }
+
+  /** Saves and activates a new version made by the system (no signed-in user). */
+  private async saveSystemVersion(
+    strategy: AiStrategyDoc,
+    config: AiStrategyConfig,
+    changeNote: string,
+  ): Promise<void> {
+    const version = strategy.latestVersion + 1;
+    await AiStrategyVersionModel.create({
+      strategy: strategy._id,
+      version,
+      config,
+      changeNote,
+      createdBy: null,
+      createdByName: 'System',
+    });
+    await AiStrategyModel.updateOne(
+      { _id: strategy._id },
+      { $set: { latestVersion: version, activeVersion: version } },
+    );
   }
 
   private async insertStrategy(def: DefaultStrategy, isDefault: boolean, user: AuthUser | null) {

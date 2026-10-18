@@ -24,7 +24,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${lato.variable}`}>
-      <body>
+      {/* Browser extensions (e.g. ColorZilla's cz-shortcut-listen) add attributes to <body>
+          before React hydrates. This ignores only <body>'s own attributes, not its children. */}
+      <body suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -33,10 +33,21 @@ export function buildTriagePrompt(input: TriagePromptInput): ComposedPrompt {
     })
     .join('\n\n');
 
+  // Rules staff write on the AI settings Category and Priority tabs (plain English).
+  const { sortingRules, urgencyRules } = classification.config;
+  const sorting = sortingRules.map((r) => `- ${r.description} → ${r.category}`).join('\n');
+  const urgency = urgencyRules.map((r) => `- ${r.description} → ${r.priority}`).join('\n');
+
   const system = [
     classification.config.instructions,
     classification.config.categoryInstructions,
+    sorting
+      ? `Category rules from the BookLeaf team (follow them when they apply):\n${sorting}`
+      : '',
     PRIORITY_RUBRIC_PREAMBLE,
+    urgency
+      ? `Priority rules from the BookLeaf team (follow them when they apply):\n${urgency}`
+      : '',
     rubric ? `Category-specific priority guidance:\n${rubric}` : '',
   ]
     .filter(Boolean)

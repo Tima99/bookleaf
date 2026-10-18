@@ -32,10 +32,18 @@ import { ErrorState, LoadingBlock, PageHeader } from '@/components/ui/primitives
 import { errorMessage } from '@/lib/api-client';
 import { endpoints, queryKeys } from '@/lib/endpoints';
 import { tabFor } from '@/stores/workspace-store';
-import { ACTIVITY_KIND, AI_PROBLEM, SETTING_KIND } from '../ai/plain-language';
+import { ACTIVITY_KIND, AI_PROBLEM, SETTING_GROUPS, type SettingGroup } from '../ai/plain-language';
 import { useWorkspaceNav } from '../workspace/use-workspace-nav';
 
-const KINDS: AiStrategyKind[] = ['CLASSIFICATION', 'PRIORITY', 'RESPONSE'];
+const GROUPS: SettingGroup[] = ['TRIAGE', 'RESPONSE'];
+
+const kindFor = (group: SettingGroup): AiStrategyKind =>
+  group === 'RESPONSE' ? 'RESPONSE' : 'CLASSIFICATION';
+
+/** Sorting setting first, then categories in their usual order. */
+function settingOrder(s: AiStrategyDto): number {
+  return s.category ? TICKET_CATEGORIES.indexOf(s.category) + 1 : 0;
+}
 
 /** One plain sentence about whether AI is on — no providers, models or tokens. */
 function AiStatusBanner() {
@@ -196,9 +204,10 @@ function CreateSettingModal({
 }) {
   const { openTab } = useWorkspaceNav();
   const queryClient = useQueryClient();
-  const [kind, setKind] = useState<AiStrategyKind>('RESPONSE');
+  const [group, setGroup] = useState<SettingGroup>('RESPONSE');
   const [category, setCategory] = useState<TicketCategory>('ROYALTY_PAYMENTS');
   const [name, setName] = useState('');
+  const kind = kindFor(group);
   const scopeCategory = kind === 'CLASSIFICATION' ? null : category;
   const template =
     settings.find((s) => s.kind === kind && s.category === scopeCategory && s.enabled) ??
@@ -240,12 +249,12 @@ function CreateSettingModal({
           What should it control?
           <Select
             className="mt-1 w-full"
-            value={kind}
-            onChange={setKind}
-            options={KINDS.map((k) => ({ value: k, label: SETTING_KIND[k].label }))}
+            value={group}
+            onChange={setGroup}
+            options={GROUPS.map((g) => ({ value: g, label: SETTING_GROUPS[g].label }))}
           />
         </label>
-        {kind !== 'CLASSIFICATION' ? (
+        {group === 'RESPONSE' ? (
           <label className="text-sm">
             For which category?
             <Select
@@ -283,7 +292,7 @@ export function StrategiesView() {
   const { openTab } = useWorkspaceNav();
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
-  const [kind, setKind] = useState<AiStrategyKind>('RESPONSE');
+  const [group, setGroup] = useState<SettingGroup>('TRIAGE');
   const [creating, setCreating] = useState(false);
   const strategies = useQuery({
     queryKey: queryKeys.ai.strategies,
@@ -320,7 +329,9 @@ export function StrategiesView() {
     });
   };
 
-  const rows = (strategies.data ?? []).filter((s) => s.kind === kind);
+  const rows = (strategies.data ?? [])
+    .filter((s) => SETTING_GROUPS[group].kinds.includes(s.kind))
+    .sort((a, b) => settingOrder(a) - settingOrder(b));
   const columns: ColumnsType<AiStrategyDto> = [
     {
       title: 'Setting',
@@ -412,7 +423,7 @@ export function StrategiesView() {
     <div>
       <PageHeader
         title="AI settings"
-        description="Choose how AI sorts new tickets, decides how urgent they are, and writes draft replies. Every change is kept in History, so you can always undo it."
+        description="Choose how AI picks each new ticket's category and priority, and how it writes draft replies. Every change is kept in History, so you can always undo it."
         actions={
           <Button
             icon={<PlusOutlined />}
@@ -437,13 +448,13 @@ export function StrategiesView() {
               <div>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <Segmented
-                    value={kind}
-                    onChange={(v) => setKind(v as AiStrategyKind)}
-                    options={KINDS.map((k) => ({ value: k, label: SETTING_KIND[k].label }))}
+                    value={group}
+                    onChange={(v) => setGroup(v as SettingGroup)}
+                    options={GROUPS.map((g) => ({ value: g, label: SETTING_GROUPS[g].label }))}
                   />
                   {columnSettings}
                 </div>
-                <p className="mb-3 text-sm text-ink-muted">{SETTING_KIND[kind].explain}</p>
+                <p className="mb-3 text-sm text-ink-muted">{SETTING_GROUPS[group].explain}</p>
                 <div className="surface-card overflow-hidden">
                   <Table<AiStrategyDto>
                     scroll={{ x: 'max-content' }}

@@ -21,18 +21,19 @@ import {
   InputNumber,
   Segmented,
   Select,
-  Switch,
   Table,
   Tabs,
   Tag,
 } from 'antd';
 import { useEffect, useState } from 'react';
-import { Controller, useFieldArray, useForm, type Control } from 'react-hook-form';
+import { Controller, useFieldArray, useForm, type Control, type FieldPath } from 'react-hook-form';
 import { z } from 'zod';
 import {
   AI_PROVIDERS,
   AiStrategyConfigSchema,
+  RULE_LIMITS,
   STRATEGY_LIMITS,
+  TICKET_CATEGORIES,
   TICKET_CATEGORY_LABELS,
   TICKET_PRIORITIES,
   TICKET_PRIORITY_LABELS,
@@ -45,8 +46,9 @@ import { ErrorState, LoadingBlock, PageHeader, Section } from '@/components/ui/p
 import { PriorityTag } from '@/components/ui/tags';
 import { errorMessage } from '@/lib/api-client';
 import { endpoints, queryKeys } from '@/lib/endpoints';
-import { useWorkspace } from '@/stores/workspace-store';
+import { tabFor, useWorkspace } from '@/stores/workspace-store';
 import { AI_PROBLEM, REPLY_LENGTHS, SETTING_KIND } from '../ai/plain-language';
+import { useWorkspaceNav } from '../workspace/use-workspace-nav';
 
 /*
  * AI setting editor for non-technical staff.
@@ -54,21 +56,56 @@ import { AI_PROBLEM, REPLY_LENGTHS, SETTING_KIND } from '../ai/plain-language';
  * model and limits are kept in a collapsed "Advanced" section for technical admins.
  */
 
-const FormSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(3, 'Give it a name of at least 3 characters')
-    .max(STRATEGY_LIMITS.nameMax),
-  purpose: z.string().trim().max(STRATEGY_LIMITS.purposeMax),
-  config: AiStrategyConfigSchema,
-  changeNote: z.string().trim().max(STRATEGY_LIMITS.changeNoteMax),
-});
+/** A reply setting's guidance as one rule per line (drops a "… focus:" heading and bullets). */
+function guidanceLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l, i) => !(i === 0 && l.endsWith(':')))
+    .map((l) => l.replace(/^[-•*]\s*/, ''));
+}
+const guidanceText = (lines: string[]) => lines.map((l) => `- ${l.trim()}`).join('\n');
+
+const FormSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(3, 'Give it a name of at least 3 characters')
+      .max(STRATEGY_LIMITS.nameMax),
+    purpose: z.string().trim().max(STRATEGY_LIMITS.purposeMax),
+    config: AiStrategyConfigSchema,
+    /** Reply settings edit their guidance as rules; saved back as config.categoryInstructions. */
+    replyRules: z.array(
+      z.object({
+        description: z
+          .string()
+          .trim()
+          .min(RULE_LIMITS.descriptionMin, 'Describe the rule in a few words'),
+      }),
+    ),
+    changeNote: z.string().trim().max(STRATEGY_LIMITS.changeNoteMax),
+  })
+  .superRefine((v, ctx) => {
+    const text = guidanceText(v.replyRules.map((r) => r.description));
+    if (text.length > STRATEGY_LIMITS.categoryInstructionsMax) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['replyRules'],
+        message: 'These rules are too long in total. Please shorten or remove some.',
+      });
+    }
+  });
 type FormInput = z.input<typeof FormSchema>;
 type FormOutput = z.output<typeof FormSchema>;
 
 function toFormValues(s: AiStrategyDto): FormInput {
-  return { name: s.name, purpose: s.purpose, config: s.config, changeNote: '' };
+  const replyRules =
+    s.kind === 'RESPONSE'
+      ? guidanceLines(s.config.categoryInstructions).map((description) => ({ description }))
+      : [];
+  return { name: s.name, purpose: s.purpose, config: s.config, replyRules, changeNote: '' };
 }
 
 function FieldError({ message }: { message?: string }) {
@@ -79,116 +116,133 @@ function Help({ children }: { children: React.ReactNode }) {
   return <p className="-mt-2 mb-4 text-sm text-ink-muted">{children}</p>;
 }
 
-/* --------------------------- "always urgent" rules --------------------------- */
+/* ------------------------------- rule rows ------------------------------- */
 
-function UrgencyRulesEditor({
+type RuleArray = 'config.sortingRules' | 'config.urgencyRules' | 'replyRules';
+
+/** One rule per row: a plain-English description and, optionally, a dropdown. */
+function RuleFields({
   control,
+  name,
   idPrefix,
-  title,
+  descriptionLabel,
+  placeholder,
+  choice,
 }: {
   control: Control<FormInput>;
+  name: RuleArray;
   idPrefix: string;
-  title: string;
+  descriptionLabel: string;
+  placeholder: string;
+  choice?: {
+    field: 'category' | 'priority';
+    label: string;
+    options: Array<{ value: string; label: string }>;
+    initial: string;
+  };
 }) {
-  const rules = useFieldArray({ control, name: 'config.floorRules' });
+  // The three lists share one row shape apart from the optional dropdown field.
+  const rules = useFieldArray({ control, name: name as 'config.sortingRules' });
+  const path = (index: number, field: string) =>
+    `${name}.${index}.${field}` as FieldPath<FormInput>;
+  const cols = choice
+    ? 'md:grid-cols-[minmax(0,1fr)_200px_40px]'
+    : 'md:grid-cols-[minmax(0,1fr)_40px]';
+
   return (
-    <Section
-      title={title}
-      extra={
-        <Button
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={() => rules.append({ label: '', keywords: [], minimumPriority: 'HIGH' })}
+    <div className="flex flex-col gap-2">
+      {rules.fields.length ? (
+        <div className={`hidden gap-3 px-1 text-xs font-medium text-ink-subtle md:grid ${cols}`}>
+          <span>{descriptionLabel}</span>
+          {choice ? <span>{choice.label}</span> : null}
+          <span />
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed border-line p-4 text-center text-sm text-ink-subtle">
+          No rules yet. Add one below.
+        </p>
+      )}
+      {rules.fields.map((f, index) => (
+        <div
+          key={f.id}
+          className={`grid gap-2 rounded-lg border border-line bg-surface-muted p-2 md:items-start md:gap-3 ${cols}`}
         >
-          Add a rule
+          <Controller
+            name={path(index, 'description')}
+            control={control}
+            render={({ field, fieldState }) => (
+              <div>
+                <Input.TextArea
+                  id={`${idPrefix}-${index}`}
+                  aria-label={`${descriptionLabel} (rule ${index + 1})`}
+                  value={String(field.value ?? '')}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  autoSize={{ minRows: 1, maxRows: 6 }}
+                  maxLength={
+                    choice ? RULE_LIMITS.descriptionMax : STRATEGY_LIMITS.categoryInstructionsMax
+                  }
+                  placeholder={placeholder}
+                  status={fieldState.error ? 'error' : ''}
+                />
+                <FieldError message={fieldState.error?.message} />
+              </div>
+            )}
+          />
+          {choice ? (
+            <Controller
+              name={path(index, choice.field)}
+              control={control}
+              render={({ field }) => (
+                <Select
+                  aria-label={`${choice.label} (rule ${index + 1})`}
+                  value={field.value as string}
+                  onChange={field.onChange}
+                  options={choice.options}
+                  className="w-full"
+                />
+              )}
+            />
+          ) : null}
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            aria-label={`Remove rule ${index + 1}`}
+            onClick={() => rules.remove(index)}
+          />
+        </div>
+      ))}
+      <div>
+        <Button
+          icon={<PlusOutlined />}
+          disabled={rules.fields.length >= RULE_LIMITS.rulesMax}
+          onClick={() =>
+            rules.append({
+              description: '',
+              ...(choice ? { [choice.field]: choice.initial } : {}),
+            } as never)
+          }
+        >
+          Add rule
         </Button>
-      }
-    >
-      <Help>
-        A simple safety net: if a ticket mentions any of the words, it is never less urgent than the
-        level you choose — even if AI thinks otherwise.
-      </Help>
-      <div className="flex flex-col gap-3">
-        {rules.fields.length === 0 ? (
-          <p className="text-sm text-ink-subtle">No rules yet.</p>
-        ) : null}
-        {rules.fields.map((f, index) => (
-          <div key={f.id} className="rounded-lg border border-line bg-surface-muted p-3">
-            <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-              <Controller
-                name={`config.floorRules.${index}.label`}
-                control={control}
-                render={({ field, fieldState }) => (
-                  <label className="text-sm" htmlFor={`${idPrefix}-rule-${index}-label`}>
-                    Rule name
-                    <Input
-                      {...field}
-                      id={`${idPrefix}-rule-${index}-label`}
-                      className="mt-1"
-                      placeholder="e.g. Wrong ISBN"
-                      status={fieldState.error ? 'error' : ''}
-                    />
-                    <FieldError
-                      message={fieldState.error ? 'Please give the rule a name' : undefined}
-                    />
-                  </label>
-                )}
-              />
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => rules.remove(index)}
-                className="self-end"
-              >
-                Remove
-              </Button>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-[2fr_1fr]">
-              <Controller
-                name={`config.floorRules.${index}.keywords`}
-                control={control}
-                render={({ field, fieldState }) => (
-                  <label className="text-sm" htmlFor={`${idPrefix}-rule-${index}-words`}>
-                    If the ticket mentions any of these words
-                    <Select
-                      {...field}
-                      id={`${idPrefix}-rule-${index}-words`}
-                      mode="tags"
-                      className="mt-1 w-full"
-                      placeholder="Type a word and press Enter"
-                      tokenSeparators={[',']}
-                      status={fieldState.error ? 'error' : ''}
-                    />
-                    <FieldError message={fieldState.error ? 'Add at least one word' : undefined} />
-                  </label>
-                )}
-              />
-              <Controller
-                name={`config.floorRules.${index}.minimumPriority`}
-                control={control}
-                render={({ field }) => (
-                  <label className="text-sm" htmlFor={`${idPrefix}-rule-${index}-min`}>
-                    …make it at least
-                    <Select
-                      {...field}
-                      id={`${idPrefix}-rule-${index}-min`}
-                      className="mt-1 w-full"
-                      options={TICKET_PRIORITIES.map((p) => ({
-                        value: p,
-                        label: TICKET_PRIORITY_LABELS[p],
-                      }))}
-                    />
-                  </label>
-                )}
-              />
-            </div>
-          </div>
-        ))}
       </div>
-    </Section>
+    </div>
   );
 }
+
+const CATEGORY_CHOICE = {
+  field: 'category' as const,
+  label: 'Put it in',
+  options: TICKET_CATEGORIES.map((c) => ({ value: c, label: TICKET_CATEGORY_LABELS[c] })),
+  initial: 'GENERAL_INQUIRY',
+};
+const PRIORITY_CHOICE = {
+  field: 'priority' as const,
+  label: 'Make it',
+  options: TICKET_PRIORITIES.map((p) => ({ value: p, label: TICKET_PRIORITY_LABELS[p] })),
+  initial: 'MEDIUM',
+};
 
 /* --------------------------------- editor --------------------------------- */
 
@@ -196,7 +250,16 @@ function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: st
   const queryClient = useQueryClient();
   const { message } = App.useApp();
   const setDirty = useWorkspace((s) => s.setDirty);
+  const { openTab } = useWorkspaceNav();
   const id = (field: string) => `${strategy.id}-${field}`;
+  // Priority settings point to the Category & Priority setting, which holds the AI instructions.
+  const settings = useQuery({
+    queryKey: queryKeys.ai.strategies,
+    queryFn: () => endpoints.ai.strategies(),
+    enabled: strategy.kind === 'PRIORITY',
+  });
+  const sorting = (settings.data ?? []).filter((s) => s.kind === 'CLASSIFICATION');
+  const sortingSetting = sorting.find((s) => s.enabled) ?? sorting[0];
   const kb = useQuery({
     queryKey: queryKeys.ai.knowledgeBase,
     queryFn: endpoints.ai.knowledgeBase,
@@ -214,7 +277,13 @@ function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: st
       endpoints.ai.update(strategy.id, {
         name: values.name,
         purpose: values.purpose,
-        config: values.config,
+        config:
+          strategy.kind === 'RESPONSE'
+            ? {
+                ...values.config,
+                categoryInstructions: guidanceText(values.replyRules.map((r) => r.description)),
+              }
+            : values.config,
         changeNote: values.changeNote || undefined,
         activate: true,
       }),
@@ -245,24 +314,17 @@ function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: st
               <>
                 <Section title={`What should AI keep in mind for ${categoryName} replies?`}>
                   <Help>
-                    Write in plain English — one point per line works well. For example: “Always
-                    give the exact payout date.” Your team still reviews every draft before it is
-                    sent.
+                    One rule per row, in plain English. For example: “Always give the exact payout
+                    date.” Your team still reviews every draft before it is sent.
                   </Help>
-                  <Controller
-                    name="config.categoryInstructions"
+                  <RuleFields
                     control={control}
-                    render={({ field }) => (
-                      <Input.TextArea
-                        {...field}
-                        id={id('instructions')}
-                        aria-label="Points for AI to keep in mind"
-                        autoSize={{ minRows: 6, maxRows: 18 }}
-                        maxLength={STRATEGY_LIMITS.categoryInstructionsMax}
-                        showCount
-                      />
-                    )}
+                    name="replyRules"
+                    idPrefix={id('reply-rule')}
+                    descriptionLabel="Replies should…"
+                    placeholder="e.g. Always give the exact payout date"
                   />
+                  <FieldError message={formState.errors.replyRules?.message} />
                 </Section>
 
                 <Section title="Tone of voice">
@@ -326,34 +388,12 @@ function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: st
                         );
                       }}
                     />
-                    <Controller
-                      name="config.includeExamples"
-                      control={control}
-                      render={({ field }) => (
-                        <label className="flex items-start gap-3 text-sm" htmlFor={id('examples')}>
-                          <Switch
-                            id={id('examples')}
-                            checked={field.value}
-                            onChange={field.onChange}
-                          />
-                          <span>
-                            <span className="font-medium">
-                              Use BookLeaf’s example answer as a guide
-                            </span>
-                            <span className="block text-ink-muted">
-                              Shows AI how a similar question was answered well, so drafts match
-                              your style.
-                            </span>
-                          </span>
-                        </label>
-                      )}
-                    />
                   </div>
                 </Section>
               </>
             ) : null}
 
-            {/* ------------------------- Setting urgency ------------------------- */}
+            {/* ----------------------------- Priority ----------------------------- */}
             {isPriority ? (
               <>
                 <Section title={`When are ${categoryName} tickets urgent?`}>
@@ -385,39 +425,57 @@ function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: st
                     )}
                   />
                 </Section>
-                <UrgencyRulesEditor
-                  control={control}
-                  idPrefix={strategy.id}
-                  title="Always at least this urgent when…"
-                />
               </>
             ) : null}
 
-            {/* ------------------------- Sorting tickets ------------------------- */}
+            {/* ------------------------ Category & Priority ------------------------ */}
             {isSorting ? (
               <>
-                <UrgencyRulesEditor
-                  control={control}
-                  idPrefix={strategy.id}
-                  title="For any category: always at least this urgent when…"
-                />
-                <Section title="Anything else AI should know when sorting tickets? (optional)">
-                  <Help>
-                    For example: “Questions about author copies are Printing & Quality, not
-                    General.”
-                  </Help>
-                  <Controller
-                    name="config.categoryInstructions"
-                    control={control}
-                    render={({ field }) => (
-                      <Input.TextArea
-                        {...field}
-                        id={id('sorting-notes')}
-                        aria-label="Extra guidance for sorting"
-                        autoSize={{ minRows: 3, maxRows: 12 }}
-                        maxLength={STRATEGY_LIMITS.categoryInstructionsMax}
-                      />
-                    )}
+                <Section title="Rules AI follows for every new ticket">
+                  <Tabs
+                    items={[
+                      {
+                        key: 'category',
+                        label: 'Category',
+                        children: (
+                          <>
+                            <Help>
+                              AI already knows BookLeaf’s six categories. Add a rule when certain
+                              tickets should go to a particular category.
+                            </Help>
+                            <RuleFields
+                              control={control}
+                              name="config.sortingRules"
+                              idPrefix={id('category-rule')}
+                              descriptionLabel="When a ticket is about…"
+                              placeholder="e.g. Questions about author copies"
+                              choice={CATEGORY_CHOICE}
+                            />
+                          </>
+                        ),
+                      },
+                      {
+                        key: 'priority',
+                        label: 'Priority',
+                        children: (
+                          <>
+                            <Help>
+                              Each rule sets the priority for a type of ticket. AI judges anything
+                              the rules don’t cover. Serious cases such as wrong ISBNs or legal
+                              threats are always kept at least High.
+                            </Help>
+                            <RuleFields
+                              control={control}
+                              name="config.urgencyRules"
+                              idPrefix={id('priority-rule')}
+                              descriptionLabel="When a ticket is about…"
+                              placeholder="e.g. No royalty received for 6 months or more"
+                              choice={PRIORITY_CHOICE}
+                            />
+                          </>
+                        ),
+                      },
+                    ]}
                   />
                 </Section>
               </>
@@ -467,26 +525,54 @@ function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: st
                           </Form.Item>
                         )}
                       />
-                      <Controller
-                        name="config.instructions"
-                        control={control}
-                        render={({ field, fieldState }) => (
-                          <Form.Item
-                            htmlFor={id('prompt')}
-                            label="Main AI instructions (prompt)"
-                            help={<FieldError message={fieldState.error?.message} />}
-                          >
-                            <Input.TextArea
-                              {...field}
-                              id={id('prompt')}
-                              autoSize={{ minRows: 8, maxRows: 24 }}
-                              className="!font-mono !text-[12.5px]"
-                              maxLength={STRATEGY_LIMITS.instructionsMax}
-                              showCount
-                            />
-                          </Form.Item>
-                        )}
-                      />
+                      {isPriority ? (
+                        // Category and priority share one AI call whose instructions come from
+                        // the Category & Priority setting; this setting adds no instructions.
+                        <Alert
+                          className="!mb-4"
+                          type="info"
+                          showIcon
+                          title="Priority doesn't have its own AI instructions"
+                          description={
+                            <>
+                              AI decides a ticket’s category and priority together, using the main
+                              instructions and Priority rules in “Category & Priority”.
+                              {sortingSetting ? (
+                                <Button
+                                  size="small"
+                                  className="!ml-2"
+                                  onClick={() =>
+                                    openTab(tabFor.strategy(sortingSetting.id, sortingSetting.name))
+                                  }
+                                >
+                                  Open Category & Priority
+                                </Button>
+                              ) : null}
+                            </>
+                          }
+                        />
+                      ) : (
+                        <Controller
+                          name="config.instructions"
+                          control={control}
+                          render={({ field, fieldState }) => (
+                            <Form.Item
+                              htmlFor={id('prompt')}
+                              label="Main AI instructions (prompt)"
+                              help={<FieldError message={fieldState.error?.message} />}
+                            >
+                              <Input.TextArea
+                                {...field}
+                                id={id('prompt')}
+                                autoSize={{ minRows: 8, maxRows: 24 }}
+                                className="!font-mono !text-[12.5px]"
+                                maxLength={STRATEGY_LIMITS.instructionsMax}
+                                showCount
+                              />
+                            </Form.Item>
+                          )}
+                        />
+                      )}
                       {!isPriority ? (
                         <div className="grid gap-x-3 sm:grid-cols-2">
                           <Controller

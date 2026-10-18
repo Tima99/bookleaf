@@ -3,7 +3,9 @@ import type {
   AiStrategyKind,
   KnowledgeSectionId,
   PriorityFloorRule,
+  SortingRule,
   TicketCategory,
+  UrgencyRule,
 } from '@bookleaf/contracts';
 
 /**
@@ -17,7 +19,7 @@ export interface DefaultStrategy {
   category: TicketCategory | null;
   purpose: string;
   /** Earlier built-in names/descriptions; renamed on startup if nobody has edited them. */
-  legacy?: { name: string; purpose: string };
+  legacy?: { names: string[]; purposes: string[] };
   config: AiStrategyConfigInput;
 }
 
@@ -70,16 +72,32 @@ export const PRIORITY_RUBRIC_PREAMBLE = `Priority levels:
 - LOW: informational or how-to questions with no current harm.`;
 
 interface PriorityDefault {
-  rules: string[];
+  /** Shown on the AI settings Priority tab; stored on the Category & Priority setting. */
+  urgency: UrgencyRule[];
   floors: PriorityFloorRule[];
 }
 
 const PRIORITY_DEFAULTS: Record<TicketCategory, PriorityDefault> = {
   ROYALTY_PAYMENTS: {
-    rules: [
-      'No royalty received for two or more quarters (about 6 months), or a payout clearly overdue beyond the 45-day window → HIGH; CRITICAL if the author reports money sent to a wrong account.',
-      'Disputed royalty amount or request for a breakdown → MEDIUM.',
-      'General questions about the royalty cycle, threshold or bank-detail updates → LOW.',
+    urgency: [
+      {
+        description:
+          'No royalty received for two or more quarters (about 6 months), or a payout overdue beyond the 45-day window',
+        priority: 'HIGH',
+      },
+      {
+        description: 'Author says royalty money was sent to the wrong bank account',
+        priority: 'CRITICAL',
+      },
+      {
+        description: 'Disputed royalty amount or a request for a royalty breakdown',
+        priority: 'MEDIUM',
+      },
+      {
+        description:
+          'General questions about the royalty cycle, payout threshold or updating bank details',
+        priority: 'LOW',
+      },
     ],
     floors: [
       {
@@ -115,10 +133,17 @@ const PRIORITY_DEFAULTS: Record<TicketCategory, PriorityDefault> = {
     ],
   },
   ISBN_METADATA: {
-    rules: [
-      'Any ISBN error (duplicate, mismatched with the printed copy, wrong book linked) → HIGH. Per BookLeaf policy this is always escalated to production.',
-      'Wrong author name or title on a live listing → HIGH.',
-      'Requests to change descriptions, keywords or bios → LOW.',
+    urgency: [
+      {
+        description:
+          'Any ISBN error: duplicate, different from the printed copy, or linked to the wrong book (always escalated to production)',
+        priority: 'HIGH',
+      },
+      { description: 'Wrong author name or title on a live listing', priority: 'HIGH' },
+      {
+        description: 'Requests to change a book description, keywords or author bio',
+        priority: 'LOW',
+      },
     ],
     floors: [
       {
@@ -129,10 +154,18 @@ const PRIORITY_DEFAULTS: Record<TicketCategory, PriorityDefault> = {
     ],
   },
   PRINTING_QUALITY: {
-    rules: [
-      'Defects that make the book unusable or unsellable (missing/blank pages, wrong content printed, severe misalignment) → HIGH.',
-      'Visible quality issues (blurry images, colour inconsistency, binding defects) → MEDIUM.',
-      'Questions about paper or print options → LOW.',
+    urgency: [
+      {
+        description:
+          "Printed copies that can't be used or sold (missing or blank pages, wrong content, badly misaligned)",
+        priority: 'HIGH',
+      },
+      {
+        description:
+          'Visible print problems such as blurry images, colour differences or binding defects',
+        priority: 'MEDIUM',
+      },
+      { description: 'Questions about paper or print options', priority: 'LOW' },
     ],
     floors: [
       {
@@ -155,10 +188,21 @@ const PRIORITY_DEFAULTS: Record<TicketCategory, PriorityDefault> = {
     ],
   },
   DISTRIBUTION_AVAILABILITY: {
-    rules: [
-      'A live book unavailable on a major platform during a launch, promotion or for more than a week → HIGH.',
-      'A live book showing "Currently Unavailable" / out of stock → MEDIUM (stock sync issue, 24–48h fix).',
-      'Questions about when a new listing will appear (within the 7–10 business day window) → LOW.',
+    urgency: [
+      {
+        description:
+          'A live book unavailable on a major platform during a launch or promotion, or for more than a week',
+        priority: 'HIGH',
+      },
+      {
+        description:
+          'A live book showing "Currently Unavailable" or out of stock (usually fixed by a 24–48 hour stock sync)',
+        priority: 'MEDIUM',
+      },
+      {
+        description: 'Asking when a new listing will appear (within the 7–10 business day window)',
+        priority: 'LOW',
+      },
     ],
     floors: [
       {
@@ -169,10 +213,16 @@ const PRIORITY_DEFAULTS: Record<TicketCategory, PriorityDefault> = {
     ],
   },
   BOOK_STATUS_PRODUCTION: {
-    rules: [
-      'Production stalled for several weeks with a launch date at risk → HIGH.',
-      'Production slower than expected or author asking for an updated timeline → MEDIUM.',
-      'General questions about the production stages → LOW.',
+    urgency: [
+      {
+        description: 'Production stalled for several weeks and a launch date is at risk',
+        priority: 'HIGH',
+      },
+      {
+        description: 'Production slower than expected, or the author asks for an updated timeline',
+        priority: 'MEDIUM',
+      },
+      { description: 'General questions about the production stages', priority: 'LOW' },
     ],
     floors: [
       {
@@ -183,13 +233,41 @@ const PRIORITY_DEFAULTS: Record<TicketCategory, PriorityDefault> = {
     ],
   },
   GENERAL_INQUIRY: {
-    rules: [
-      'Account access problems or contract/package disputes → MEDIUM.',
-      'How-to questions (updating bio or description, package details) → LOW.',
+    urgency: [
+      {
+        description: 'Account access problems, or a contract or package dispute',
+        priority: 'MEDIUM',
+      },
+      {
+        description: 'How-to questions such as updating a bio or description, or package details',
+        priority: 'LOW',
+      },
     ],
     floors: [],
   },
 };
+
+/** Example category rules shown on the AI settings Category tab for a new install. */
+export const DEFAULT_SORTING_RULES: SortingRule[] = [
+  { description: 'Questions about the quality of author copies', category: 'PRINTING_QUALITY' },
+  {
+    description:
+      'Book shows as unavailable or out of stock on Amazon, Flipkart or the BookLeaf Store',
+    category: 'DISTRIBUTION_AVAILABILITY',
+  },
+  {
+    description: 'Asking when the book will be published or which production stage it is at',
+    category: 'BOOK_STATUS_PRODUCTION',
+  },
+];
+
+/** Built-in urgency rules for one category, or every category's as one list. */
+export function defaultUrgencyRules(category?: TicketCategory): UrgencyRule[] {
+  if (category) return PRIORITY_DEFAULTS[category].urgency;
+  return (Object.keys(PRIORITY_DEFAULTS) as TicketCategory[]).flatMap(
+    (c) => PRIORITY_DEFAULTS[c].urgency,
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /* Response drafting (per category)                                    */
@@ -283,18 +361,27 @@ export function buildDefaultStrategies(): DefaultStrategy[] {
   return [
     {
       key: 'classification.default',
-      name: 'Sorting tickets into categories',
+      name: 'Category & Priority',
       kind: 'CLASSIFICATION',
       category: null,
-      purpose: 'Decides which category each new ticket belongs to.',
+      purpose: 'Decides which category each new ticket belongs to and its priority.',
       legacy: {
-        name: 'Ticket triage (classification)',
-        purpose:
+        names: [
+          'Ticket triage (classification)',
+          'Sorting tickets into categories',
+          'Sorting & urgency',
+        ],
+        purposes: [
           'Classifies every new ticket into one of six categories; combined with priority scoring in one model call.',
+          'Decides which category each new ticket belongs to.',
+          'Decides which category each new ticket belongs to and how urgent it is.',
+        ],
       },
       config: {
         instructions: DEFAULT_CLASSIFICATION_INSTRUCTIONS,
         floorRules: GLOBAL_FLOOR_RULES,
+        sortingRules: DEFAULT_SORTING_RULES,
+        urgencyRules: defaultUrgencyRules(),
         provider: 'openai',
         model: '',
         temperature: null,
@@ -305,17 +392,21 @@ export function buildDefaultStrategies(): DefaultStrategy[] {
     },
     ...categories.map<DefaultStrategy>((category) => ({
       key: `priority.${category.toLowerCase()}`,
-      name: `${LABEL[category]} — urgency`,
+      name: `${LABEL[category]} — priority`,
       kind: 'PRIORITY',
       category,
-      purpose: `Decides how urgent ${LABEL[category]} tickets are.`,
+      purpose: `Keeps serious ${LABEL[category]} tickets at a minimum priority.`,
       legacy: {
-        name: `${LABEL[category]} — priority`,
-        purpose: `Priority rubric and deterministic minimum-priority rules for ${LABEL[category]} tickets.`,
+        names: [`${LABEL[category]} — urgency`],
+        purposes: [
+          `Priority rubric and deterministic minimum-priority rules for ${LABEL[category]} tickets.`,
+          `Decides how urgent ${LABEL[category]} tickets are.`,
+        ],
       },
       config: {
+        // Priority rules live on the Category & Priority setting (urgencyRules); this keeps the
+        // per-category keyword safety net.
         instructions: `Priority rubric for ${LABEL[category]} tickets.`,
-        priorityRules: PRIORITY_DEFAULTS[category].rules,
         floorRules: PRIORITY_DEFAULTS[category].floors,
         maxOutputTokens: 400,
       },
@@ -327,8 +418,8 @@ export function buildDefaultStrategies(): DefaultStrategy[] {
       category,
       purpose: `Writes draft replies for ${LABEL[category]} tickets.`,
       legacy: {
-        name: `${LABEL[category]} — reply drafting`,
-        purpose: `Drafts empathetic, policy-accurate replies for ${LABEL[category]} tickets.`,
+        names: [`${LABEL[category]} — reply drafting`],
+        purposes: [`Drafts empathetic, policy-accurate replies for ${LABEL[category]} tickets.`],
       },
       config: {
         instructions: DEFAULT_RESPONSE_INSTRUCTIONS,

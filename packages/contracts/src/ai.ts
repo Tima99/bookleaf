@@ -39,6 +39,28 @@ export const PriorityFloorRuleSchema = z.object({
 });
 export type PriorityFloorRule = z.infer<typeof PriorityFloorRuleSchema>;
 
+export const RULE_LIMITS = { descriptionMin: 3, descriptionMax: 300, rulesMax: 40 } as const;
+
+const ruleDescription = z
+  .string()
+  .trim()
+  .min(RULE_LIMITS.descriptionMin, 'Describe the rule in a few words')
+  .max(RULE_LIMITS.descriptionMax);
+
+/** Staff-written sorting rule: tickets like `description` belong in `category`. */
+export const SortingRuleSchema = z.object({
+  description: ruleDescription,
+  category: TicketCategorySchema,
+});
+export type SortingRule = z.infer<typeof SortingRuleSchema>;
+
+/** Staff-written urgency rule: tickets like `description` get `priority`. */
+export const UrgencyRuleSchema = z.object({
+  description: ruleDescription,
+  priority: TicketPrioritySchema,
+});
+export type UrgencyRule = z.infer<typeof UrgencyRuleSchema>;
+
 /**
  * Versioned, admin-editable configuration. Every save produces a new immutable version;
  * tickets record the strategy id + version that produced their AI output.
@@ -55,6 +77,10 @@ export const AiStrategyConfigSchema = z.object({
     .default([]),
   /** Deterministic minimum-priority rules applied after the model (PRIORITY strategies). */
   floorRules: z.array(PriorityFloorRuleSchema).max(STRATEGY_LIMITS.rulesMax).default([]),
+  /** Category rules edited on the AI settings "Category" tab (CLASSIFICATION strategy). */
+  sortingRules: z.array(SortingRuleSchema).max(RULE_LIMITS.rulesMax).default([]),
+  /** Priority rules edited on the AI settings "Priority" tab (CLASSIFICATION strategy). */
+  urgencyRules: z.array(UrgencyRuleSchema).max(RULE_LIMITS.rulesMax).default([]),
   knowledgeSections: z.array(KnowledgeSectionIdSchema).max(8).default([]),
   provider: AiProviderSchema.default('openai'),
   /** Model id; empty string means "use the server default for this task". */

@@ -18,23 +18,25 @@ Every call has two parts:
 
 ## Strategy configuration fields
 
-| Field                  | Used by                           | Meaning                                                                             |
-| ---------------------- | --------------------------------- | ----------------------------------------------------------------------------------- |
-| `instructions`         | all                               | System prompt template (role + rules). For priority strategies, the rubric heading. |
-| `categoryInstructions` | classification, response          | Extra guidance appended to the system prompt (category playbook).                   |
-| `tone`                 | response                          | Voice description appended to the system prompt.                                    |
-| `priorityRules[]`      | priority                          | Rubric lines given to the model for that category.                                  |
-| `floorRules[]`         | classification (global), priority | `{label, keywords[], minimumPriority}` — deterministic, applied after the model.    |
-| `knowledgeSections[]`  | response                          | KB section ids always included (others added by relevance, max 3).                  |
-| `provider`, `model`    | classification, response          | Model override (blank = server default).                                            |
-| `temperature`          | classification, response          | Optional; ignored for models that reject sampling params.                           |
-| `maxOutputTokens`      | all                               | Output budget.                                                                      |
-| `includeExamples`      | response                          | Include the best-matching calibration example.                                      |
-| `maxHistoryMessages`   | response                          | Number of latest public messages sent.                                              |
+| Field                  | Used by                           | Meaning                                                                                                            |
+| ---------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `instructions`         | classification, response          | System prompt template (role + rules). Priority strategies keep a placeholder; triage uses the classification one. |
+| `categoryInstructions` | classification, response          | Extra guidance appended to the system prompt (category playbook).                                                  |
+| `tone`                 | response                          | Voice description appended to the system prompt.                                                                   |
+| `sortingRules[]`       | classification                    | `{description, category}` rules from the AI settings Category tab.                                                 |
+| `urgencyRules[]`       | classification                    | `{description, priority}` rules from the AI settings Priority tab.                                                 |
+| `priorityRules[]`      | priority (legacy)                 | Old free-text rubric lines; moved into `urgencyRules` once on startup and then empty.                              |
+| `floorRules[]`         | classification (global), priority | `{label, keywords[], minimumPriority}` — deterministic, applied after the model.                                   |
+| `knowledgeSections[]`  | response                          | KB section ids always included (others added by relevance, max 3).                                                 |
+| `provider`, `model`    | classification, response          | Model override (blank = server default).                                                                           |
+| `temperature`          | classification, response          | Optional; ignored for models that reject sampling params.                                                          |
+| `maxOutputTokens`      | all                               | Output budget.                                                                                                     |
+| `includeExamples`      | response                          | Include the best-matching calibration example.                                                                     |
+| `maxHistoryMessages`   | response                          | Number of latest public messages sent.                                                                             |
 
 ## Triage prompt (classification + priority)
 
-System = classification instructions + priority level definitions + per-category rubric:
+System = classification instructions + Category rules + priority level definitions + Priority rules (+ any legacy per-category rubric):
 
 ```
 You are the triage specialist for BookLeaf Publishing's author support desk …

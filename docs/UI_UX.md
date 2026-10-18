@@ -161,15 +161,17 @@ dot marks tickets awaiting a team reply. Filters persist across tab switches and
 
 ## AI settings (plain-language editor)
 
-AI settings are written for support staff, not engineers. Each setting has three tabs:
+AI settings are written for support staff, not engineers. The list has two groups:
+**Category & Priority** (one setting: AI decides a ticket's category and priority together, in
+one step) and **Writing replies** (one per category). Opening a setting shows three tabs:
 
-- **Settings** shows only plain choices for its kind:
-  - *Writing replies:* points to keep in mind, tone of voice, which company policies to follow, reply length (Short / Standard / Detailed) and whether to use BookLeaf's example answer.
-  - *Setting urgency:* when tickets are urgent (one line each), plus "always at least this urgent when the ticket mentions…" word rules.
-  - *Sorting tickets:* the same word rules for any category, plus optional extra guidance.
+- **Settings** shows plain choices, written as rules — one rule per row, with **Add rule** and a remove button on each row:
+  - _Category & Priority:_ a **Category** tab (each row: "When a ticket is about…" + a category dropdown) and a **Priority** tab (each row: "When a ticket is about…" + Critical / High / Medium / Low).
+  - _Writing replies:_ rules for what replies should say (one per row), tone of voice, which company policies to follow, and reply length (Short / Standard / Detailed).
 
-  The underlying prompt, provider, model, temperature and exact token limit sit in a collapsed **Advanced settings — for technical admins** section. Saving applies the change straight away, with an optional "What did you change?" note.
-- **Try it** runs an example author question and shows the category, urgency and reason, or the draft reply, in plain words. Nothing is sent to authors. The prompt preview and model details are under **Technical details**.
+  Keyword "safety net" rules (e.g. a wrong ISBN is always at least High) still apply after AI, but are not shown here. The underlying prompt, provider, model, temperature and exact token limit sit in a collapsed **Advanced settings — for technical admins** section. Saving applies the change straight away, with an optional "What did you change?" note.
+
+- **Try it** runs an example author question and shows the category, urgency and reason, or the draft reply, in plain words. Nothing is sent to authors.
 - **History** lists every saved version. **Use this version** undoes a change.
 
 The AI status card on the list page uses the neutral card style with a small coloured dot (green on, amber paused, grey off), not a full-colour alert.
