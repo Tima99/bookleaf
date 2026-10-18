@@ -164,7 +164,7 @@ dot marks tickets awaiting a team reply. Filters persist across tab switches and
 AI settings are written for support staff, not engineers. Each setting has three tabs:
 
 - **Settings** shows only plain choices for its kind:
-  - *Writing replies:* points to keep in mind, tone of voice, which company policies to follow, reply length (Short / Standard / Detailed), how much of the conversation AI reads, and whether to use BookLeaf's example answer.
+  - *Writing replies:* points to keep in mind, tone of voice, which company policies to follow, reply length (Short / Standard / Detailed) and whether to use BookLeaf's example answer.
   - *Setting urgency:* when tickets are urgent (one line each), plus "always at least this urgent when the ticket mentions…" word rules.
   - *Sorting tickets:* the same word rules for any category, plus optional extra guidance.
 

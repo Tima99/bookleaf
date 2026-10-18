@@ -46,7 +46,7 @@ import { PriorityTag } from '@/components/ui/tags';
 import { errorMessage } from '@/lib/api-client';
 import { endpoints, queryKeys } from '@/lib/endpoints';
 import { useWorkspace } from '@/stores/workspace-store';
-import { AI_PROBLEM, HISTORY_OPTIONS, REPLY_LENGTHS, SETTING_KIND } from '../ai/plain-language';
+import { AI_PROBLEM, REPLY_LENGTHS, SETTING_KIND } from '../ai/plain-language';
 
 /*
  * AI setting editor for non-technical staff.
@@ -325,33 +325,6 @@ function SettingEditor({ strategy, tabId }: { strategy: AiStrategyDto; tabId: st
                           </div>
                         );
                       }}
-                    />
-                    <Controller
-                      name="config.maxHistoryMessages"
-                      control={control}
-                      render={({ field }) => (
-                        <label className="text-sm font-medium" htmlFor={id('history')}>
-                          How much of the conversation AI reads
-                          <Select
-                            id={id('history')}
-                            className="mt-1 !block w-full max-w-sm"
-                            value={field.value}
-                            onChange={field.onChange}
-                            options={[
-                              ...HISTORY_OPTIONS.map((h) => ({ value: h.value, label: h.label })),
-                              ...(HISTORY_OPTIONS.some((h) => h.value === field.value) ||
-                              field.value === undefined
-                                ? []
-                                : [
-                                    {
-                                      value: field.value,
-                                      label: `The last ${field.value} messages`,
-                                    },
-                                  ]),
-                            ]}
-                          />
-                        </label>
-                      )}
                     />
                     <Controller
                       name="config.includeExamples"

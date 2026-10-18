@@ -45,11 +45,3 @@ export const REPLY_LENGTHS = [
   { value: 1200, label: 'Standard' },
   { value: 2000, label: 'Detailed' },
 ] as const;
-
-/** How many earlier messages AI reads when drafting (maxHistoryMessages). */
-export const HISTORY_OPTIONS = [
-  { value: 0, label: "Only the author's question" },
-  { value: 3, label: 'The last 3 messages' },
-  { value: 6, label: 'The last 6 messages' },
-  { value: 10, label: 'The last 10 messages' },
-] as const;
