@@ -5,9 +5,9 @@
   "description": "BookLeaf support portal frontend (Next.js App Router \u2014 UI only, talks to the Express API).",
   "type": "module",
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
-    "start": "next start --port 3000",
+    "dev": "node init && next dev --port 3000",
+    "build": "node init && next build",
+    "start": "node init && next start --port 3000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src",
     "test": "vitest run --passWithNoTests"
