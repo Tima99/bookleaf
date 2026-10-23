@@ -8,12 +8,12 @@
     "node": ">=24.11.0"
   },
   "scripts": {
-    "dev": "turbo run dev",
-    "dev:api": "pnpm --filter @bookleaf/api dev",
-    "dev:web": "pnpm --filter @bookleaf/web dev",
-    "build": "turbo run build",
-    "start:api": "pnpm --filter @bookleaf/api start",
-    "start:web": "pnpm --filter @bookleaf/web start",
+    "dev": "node init && turbo run dev",
+    "dev:api": "node init && pnpm --filter @bookleaf/api dev",
+    "dev:web": "node init && pnpm --filter @bookleaf/web dev",
+    "build": "node init && turbo run build",
+    "start:api": "node init && pnpm --filter @bookleaf/api start",
+    "start:web": "node init && pnpm --filter @bookleaf/web start",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",

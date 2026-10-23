@@ -5,9 +5,9 @@
   "description": "BookLeaf support portal REST API (Express + MongoDB + AI SDK).",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --clear-screen=false src/server.ts",
-    "build": "tsup",
-    "start": "node dist/server.js",
+    "dev": "node init && tsx watch --clear-screen=false src/server.ts",
+    "build": "node init && tsup",
+    "start": "node init && node dist/server.js",
     "seed": "tsx src/database/seed/run-seed.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src tests",
